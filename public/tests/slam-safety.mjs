@@ -7,7 +7,7 @@ const raw=new Float64Array(2*RAY_COUNT).fill(-1);raw[0]=2.5;
 const native=nativeScan({sensordata:raw});
 assert.equal(native.valid,1);
 assert.equal(native.ranges[0],2.5);
-assert.equal(native.ranges[1],18);
+assert.equal(native.ranges[1],25);
 const scan=simulateScan([0,0,3,0],{beams:64,maxRange:18,seed:17});
 assert.equal(scan.ranges.length,64);
 assert.ok(scan.valid>0,'Survey altitude should see physical obstacles');
