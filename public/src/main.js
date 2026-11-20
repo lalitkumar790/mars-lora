@@ -1,7 +1,7 @@
 import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
-import { missionWaypoints, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
+import { missionWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -223,6 +223,7 @@ function updateUI(){
  $('rfDrops').textContent=rs.lost+' / '+rs.expired;
  $('rfDeadline').textContent=rs.alertDeadlineRatio===null?'—':rs.alertDeadlineRatio.toFixed(0)+'%';
  $('rfShadow').textContent='Simulated '+(rs.obstructed?'NLOS obstacle blockage':'LOS')+' · range '+rs.distance.toFixed(1)+' m. RSSI shadowing stochastic; derived PDR and AoI are model outputs, not physical measurements.';
+ drawMissionMap([x,y,z],rs.obstructed);
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
@@ -256,6 +257,25 @@ function drawRFPlot(){
  const curve=(key,min,max,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();debugSamples.forEach((p,i)=>{const n=p[key]??min,x=i/(debugSamples.length-1)*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min)*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
  curve('rssi',-150,-60,'#61d6f0');curve('aoi',0,20,'#f7bb67');
  ctx.font='12px sans-serif';ctx.fillStyle='#b7cce0';ctx.fillText('RSSI blue (-150..-60 dBm) · AoI amber (0..20s)',9,17);
+}
+function drawMissionMap(pos,obstructed){
+ const cv=$('missionMap');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
+ const w=cv.width,h=cv.height,scale=Math.min(w/26,h/26),cx=w/2,cy=h/2;
+ const px=x=>cx+x*scale,py=y=>cy-y*scale;
+ ctx.fillStyle='#0b2031';ctx.fillRect(0,0,w,h);
+ ctx.strokeStyle='#223f52';ctx.lineWidth=1;
+ for(let v=-12;v<=12;v+=2){ctx.beginPath();ctx.moveTo(px(v),0);ctx.lineTo(px(v),h);ctx.stroke();ctx.beginPath();ctx.moveTo(0,py(v));ctx.lineTo(w,py(v));ctx.stroke();}
+ for(const o of obstacles){
+  ctx.fillStyle='#8b4854';ctx.globalAlpha=.9;
+  ctx.fillRect(px(o.x-o.hx),py(o.y+o.hy),o.hx*2*scale,o.hy*2*scale);
+ }
+ ctx.globalAlpha=1;ctx.strokeStyle='#d8a759';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();
+ missionWaypoints.forEach((p,i)=>i===0?ctx.moveTo(px(p[0]),py(p[1])):ctx.lineTo(px(p[0]),py(p[1])));ctx.stroke();ctx.setLineDash([]);
+ ctx.strokeStyle=obstructed?'#ffac77':'#61ddeb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(0),py(-2));ctx.lineTo(px(pos[0]),py(pos[1]));ctx.stroke();
+ ctx.fillStyle='#78f2c1';ctx.beginPath();ctx.arc(px(0),py(-2),5,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#6adfff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),6,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),9,0,Math.PI*2);ctx.stroke();
+ ctx.fillStyle='#b9d2e5';ctx.font='12px sans-serif';ctx.fillText('UAV altitude '+pos[2].toFixed(1)+' m | WP '+(waypointIndex+1)+'/'+missionWaypoints.length,8,17);
 }
 function resize(){
  const root=$('viewport');
