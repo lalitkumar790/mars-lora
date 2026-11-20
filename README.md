@@ -65,3 +65,15 @@ Code: MIT (see LICENSE). Third-party drone models retain their original licenses
 
 ## Controlled research ablation
 Use `python -m experiments.ablation --seeds 20 --output results/ablation` for eight policy combinations with identical telemetry generation rates and common seeded time-indexed fading. Toggle adaptive SF (A), critical packet priority (P), and conservative slowdown (S) independently. GitHub Actions `.github/workflows/ablation.yml` publishes 1,440 synthetic trial logs and summaries to `results/ablation`; nothing from these files is hosted by Vercel. Manuscript includes descriptive table; no hardware validation or demonstrated safety claims.
+
+## Flight stability, obstacle avoidance, diagnostics (Phase 3)
+
+The previous 3.5–4 m mission path geometrically intersected the 5 m antenna tower. The revised safe corridor climbs to 7 m first (above the 5.68 m overhead beam), performs high-altitude horizontal inspection, and only descends after returning. `public/src/mission.js` includes a conservative swept-segment clearance check; `public/tests/mission-safety.mjs` is a regression that asserts the former route intersects a collider while the new route clears the environment by >=0.5 m. In-flight controller safety hold is triggered if geometric clearance falls below 0.25 m or MuJoCo reports contact.
+
+New displayed flight debug channels: desired-versus-actual altitude line trace, tilt, motor thrust vector, velocity vector, live radio link, target pose and Cartesian tracking error, nearest collision geometry and clearance, MuJoCo contact count, industrial site minimap, LoRa RSSI/AoI trace, TX airtime and energy approximation, losses/expiry, priority alert deadlines, and radio model assumptions. Download flight telemetry CSV from the app for external analysis.
+
+`mujoco_sim/validate_mission.py` simulates the entire 7-waypoint mission for both airframes using native MuJoCo with 4-ms integration, 50-Hz control, 60-ms motor lag, simple velocity-dependent aerodynamic drag, time-varying wind and obstacle contacts. GitHub CI reports completion, clearance, tilt, and contact steps. This is a deterministic demonstration, **not** certified real-world flight safety or model validation under random disturbances.
+
+The live browser LoRa channel is a simplified raw-LoRa event engine: received power is modeled via nominal 14 dBm TX, 125 kHz bandwidth, path-loss exponent 4, 17 dB obstruction loss, 4 dB correlated shadowing and synthetic 10% contention. It accounts for packet completion time, SF-dependent airtime, queue expiry, critical deadlines, and transmission-energy proxy. All values are **simulation estimates**, not direct radio measurements. Research plots and results are saved to GitHub only, never to Vercel.
+
+Next phase detail: [Phase 4 research plan](research/PHASE_4_PLAN.md). Goals: multi-seed physics stability sweeps; time-aligned MuJoCo pose replay in the research LoRa runner; measured/corroborated LoRa propagation and realistic SF handshaking; end-to-end safety-event experiment, paired confidence intervals and ablations.
