@@ -38,10 +38,10 @@ def run(airframe,duration=240,wind=.25,out=None):
     model=mujoco.MjModel.from_xml_path(str(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")))
     data=mujoco.MjData(model)
     mujoco.mj_forward(model,data)
-    mass=.027 if airframe=="crazyflie" else 1.2
-    arm=.046 if airframe=="crazyflie" else .21
+    mass=.027 if airframe=="crazyflie" else 1.325
+    armx,army=(.046,.046) if airframe=="crazyflie" else (.14,.18)
     moment_scale=2.3951e-5/.019 if airframe=="crazyflie" else 1.
-    max_thrust=.15 if airframe=="crazyflie" else 15.
+    max_thrust=.15 if airframe=="crazyflie" else 13.
     desired=[0.,0.,.5]
     rotor=[0.,0.,0.,0.]
     idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
@@ -75,9 +75,11 @@ def run(airframe,duration=240,wind=.25,out=None):
             force=mass*clamp((9.81+3*(desired[2]-p[2])-2.9*v[2])/tilt_factor,1,18)
             mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
             my=moment_scale*clamp(.95*(pt-pitch)-.32*v[4],-.55,.55)
-            a=arm
-            for i,(x,y) in enumerate(((a,a),(a,-a),(-a,-a),(-a,a))):
-                demand=clamp(force/4+mx*y/(4*a*a)-my*x/(4*a*a),0,max_thrust)
+            arms=((armx,army),(armx,-army),(-armx,-army),(-armx,army)) if airframe=="crazyflie" else ((-armx,-army),(-armx,army),(armx,army),(armx,-army))
+            for i,(x,y) in enumerate(arms):
+                yaw_moment=0 if airframe=="crazyflie" else clamp(-.01*yaw-.008*v[5],-.02,.02)
+                yaw_trim=0 if airframe=="crazyflie" else yaw_moment*(-1 if i%2==0 else 1)/(4*.0201)
+                demand=clamp(force/4+mx*y/(4*army*army)-my*x/(4*armx*armx)+yaw_trim,0,max_thrust)
                 rotor[i]+=(1-math.exp(-.02/.06))*(demand-rotor[i])
                 data.ctrl[i]=clamp(rotor[i],0,max_thrust)
             data.xfrc_applied[1,0]=wind*(mass/1.2)*math.sin(t*.6)-.18*mass*v[0]
