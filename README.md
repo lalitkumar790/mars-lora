@@ -19,7 +19,7 @@ python analysis/plot_results.py --input results/raw/summary.csv --output paper/f
 
 Matplotlib is required **only** for plot generation: `pip install matplotlib`.
 
-The experiment runner generates `results/raw/trials.csv`, `results/raw/summary.csv`, and `results/raw/manifest.json`. The graph builder produces figure PDFs/PNGs for `paper/paper.tex` and `public/figures/`. Check in generated outputs only after verifying they were actually executed.
+The experiment runner generates `results/raw/trials.csv`, `results/raw/summary.csv`, and `results/raw/manifest.json`. The graph builder produces figure PDFs/PNGs for `paper/paper.tex`. Research plots and summary CSVs are never included in the Vercel site. Check in generated outputs only after verifying they were actually executed.
 
 ## Reproducibility boundaries
 - Trajectory generation is a **kinematic surrogate**. To claim physically realized flight, run the MuJoCo bridge and feed logged poses into the channel model.
@@ -34,12 +34,21 @@ The experiment runner generates `results/raw/trials.csv`, `results/raw/summary.c
 - `tests/` — invariants and regression tests.
 - `analysis/plot_results.py` — measured-data-only plotting.
 - `paper/paper.tex` — manuscript source, strict <=8 pages including bibliography.
-- `public/index.html` — Vercel-friendly static research dashboard.
+- `public/` — Vercel-hosted interactive MuJoCo WebAssembly flight console, with a true four-rotor MJCF model, manual commands, waypoint mission, camera orbit and CSV trace export.
 - `ros2_bridge/` — optional ROS 2 Pose subscriber and CSV logger.
 - `mujoco_sim/` — integration instructions; not falsely represented as validated flight.
 
-## Run dashboard
-`python -m http.server 8000 -d public`, then open http://localhost:8000. Vercel hosts only static dashboard output; MuJoCo/ROS 2 are **local compute**.
+## Run the browser flight simulator
+```bash
+cd public
+npm install
+npm run dev
+```
+Open the URL printed by Vite (usually `http://localhost:5173`). The public app uses official MuJoCo WebAssembly (`@mujoco/mujoco`) for real, client-side rigid-body dynamics, with a Three.js 3D visualizer. Vercel serves the prebuilt browser app; the user's browser runs the simulation. It has takeoff/land, pause/reset, hover, WASD + Q/E movement, waypoint autopilot, wind disturbance and downloadable flight CSV. The LoRa link indicator is an **illustrative RSSI estimate**, not a ROS 2/LoRa co-simulation.
+
+**Research results remain in GitHub only.** The paper and plots are built by CI; the deployed application does not expose summary CSVs, benchmark graphs, or manuscript figures.
+
+The MuJoCo browser scene is a purpose-built compact testbed and is not yet the identical 900-m kinematic route used by the radio experiments. Do not interpret browser flight as verification of the publication's link model.
 
 ## Manuscript build
 `cd paper && latexmk -pdf -interaction=nonstopmode paper.tex`. Verify `pdfinfo paper.pdf | grep Pages` is <=8. The manuscript explicitly marks unexecuted experiments as pending. Manuscript PDF is expected to be provided through CI artifacts once the build passes.
