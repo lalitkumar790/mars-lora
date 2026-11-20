@@ -1,6 +1,7 @@
 import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
+import { PlanarSLAM,simulateScan,yawOfQuaternion } from './slam.js';
 import { missionWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -104,6 +105,7 @@ let wind=.25,missionSpeed=1.5,flightLog=[];
 let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
 const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
+const slam=new PlanarSLAM();let lastScan=-1,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
 function report(message) {
@@ -133,8 +135,12 @@ function controller(){
  if(!ready)return;
  const pos=data.qpos,vel=data.qvel;
  const [roll,pitch,yaw]=quatToRPY([pos[3],pos[4],pos[5],pos[6]]);
+ // GPS-denied guidance uses only the estimated SLAM XY pose, never MuJoCo XY.
+ // Roll, pitch and yaw feedback remain simulated IMU/attitude measurements.
+ const navSlam=$('navSource').value==='slam' && slam.initialized;
+ const nx=navSlam?slam.pose.x:pos[0],ny=navSlam?slam.pose.y:pos[1];
  if(mission){
- const wp=waypointPositions[waypointIndex],delta=[wp[0]-pos[0],wp[1]-pos[1],wp[2]-pos[2]];
+ const wp=waypointPositions[waypointIndex],delta=[wp[0]-nx,wp[1]-ny,wp[2]-pos[2]];
  const dist=Math.hypot(...delta);
  const speed3=Math.hypot(vel[0],vel[1],vel[2]);
  if(dist<.5 && speed3<.65){
@@ -142,19 +148,19 @@ function controller(){
   else goTo(waypointIndex+1);
  }
  const target=waypointPositions[waypointIndex];
- const planar=Math.hypot(target[0]-pos[0],target[1]-pos[1]);
+ const planar=Math.hypot(target[0]-nx,target[1]-ny);
  // Slow the target convergence enough to respect requested mission speed.
  // Altitude-first: never begin horizontal translation below the known
  // obstacle transit envelope (max solid elevation + 0.9 m buffer).
  const rising=target[2]>=transitAltitude && pos[2]<transitAltitude-.35;
  const lead=Math.min(1.2,Math.max(.4,missionSpeed*.6));
  const scale=Math.min(1,lead/Math.max(.1,planar));
- desired[0]=rising?pos[0]:pos[0]+(target[0]-pos[0])*scale;
- desired[1]=rising?pos[1]:pos[1]+(target[1]-pos[1])*scale;
+ desired[0]=rising?nx:nx+(target[0]-nx)*scale;
+ desired[1]=rising?ny:ny+(target[1]-ny)*scale;
  desired[2]=target[2];
  }
- const ax=snap(1.0*(desired[0]-pos[0])-1.65*vel[0],-1.2,1.2);
- const ay=snap(1.0*(desired[1]-pos[1])-1.65*vel[1],-1.2,1.2);
+ const ax=snap(1.0*(desired[0]-nx)-1.65*vel[0],-1.2,1.2);
+ const ay=snap(1.0*(desired[1]-ny)-1.65*vel[1],-1.2,1.2);
  // Rotate world-XY acceleration demand into yaw-relative body axes.
  const bx=Math.cos(yaw)*ax+Math.sin(yaw)*ay;
  const by=-Math.sin(yaw)*ax+Math.cos(yaw)*ay;
@@ -183,7 +189,7 @@ function controller(){
   data.xfrc_applied[8]=-.12*mjMass*vel[2];
  }
  const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
- lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-pos[0],desired[1]-pos[1]),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
+ lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-nx,desired[1]-ny),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
   windForce:wind*(mjMass/1.2),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
  if(mission && (clearance.distance<.25 || data.ncon>0)){
    mission=false;
@@ -226,6 +232,12 @@ function updateUI(){
  drawMissionMap([x,y,z],rs.obstructed);
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
+ $('scanBeams').textContent=slam.lastScan?slam.lastScan.valid+'/'+slam.lastScan.ranges.length:'—';
+ $('slamScans').textContent=String(slam.scanCount);
+ $('slamError').textContent=slamTruthError.toFixed(2)+' m';
+ $('slamCorrections').textContent=String(slam.matches);
+ $('slamStatus').textContent=slam.lastHits<4?'LOW OBSERVABILITY: horizontal 2D scan sees too few nearby surfaces at current altitude. Odometry drift can accumulate.':'Mapping returns '+slam.lastHits+' / '+(slam.lastScan?.ranges.length??0)+', local scan match score '+slam.lastFitness.toFixed(2)+', map coverage '+slam.occupancyPercentage().toFixed(1)+'%.';
+ drawSLAMMap();
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
  $('desiredAlt').textContent=lastDebug.target[2].toFixed(2)+' m';
  $('altError').textContent=lastDebug.altError.toFixed(2)+' m';
@@ -257,6 +269,25 @@ function drawRFPlot(){
  const curve=(key,min,max,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();debugSamples.forEach((p,i)=>{const n=p[key]??min,x=i/(debugSamples.length-1)*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min)*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
  curve('rssi',-150,-60,'#61d6f0');curve('aoi',0,20,'#f7bb67');
  ctx.font='12px sans-serif';ctx.fillStyle='#b7cce0';ctx.fillText('RSSI blue (-150..-60 dBm) · AoI amber (0..20s)',9,17);
+}
+function drawSLAMMap(){
+ const cv=$('slamMap');if(!cv)return;
+ const ctx=cv.getContext('2d');if(!ctx)return;const w=cv.width,h=cv.height;
+ ctx.fillStyle='#0d2231';ctx.fillRect(0,0,w,h);
+ const s=slam.size,r=slam.resolution,scale=Math.min(w,h)/(s*r);
+ const tx=x=>w/2+x*scale,ty=y=>h/2-y*scale;
+ for(let gy=0;gy<s;gy++)for(let gx=0;gx<s;gx++){
+  const value=slam.map[gy*s+gx];if(Math.abs(value)<.22)continue;
+  ctx.fillStyle=value>0?'rgba(239,178,103,'+(Math.min(.95,.2+value*.25))+')':'rgba(72,121,145,'+(Math.min(.55,.07-value*.1))+')';
+  const x=(gx-s/2)*r,y=(gy-s/2)*r;
+  ctx.fillRect(tx(x),ty(y+r),Math.max(1.2,scale*r),Math.max(1.2,scale*r));
+ }
+ ctx.strokeStyle='#5ed7ea';ctx.lineWidth=1.5;ctx.beginPath();
+ for(let i=0;i<slam.path.length;i++){
+  const p=slam.path[i];if(i===0)ctx.moveTo(tx(p.x),ty(p.y));else ctx.lineTo(tx(p.x),ty(p.y));
+ }ctx.stroke();
+ ctx.fillStyle='#e6f2ff';ctx.beginPath();ctx.arc(tx(slam.pose.x),ty(slam.pose.y),5,0,2*Math.PI);ctx.fill();
+ ctx.font='12px sans-serif';ctx.fillStyle='#c0d9ed';ctx.fillText('Occupancy grid: blue free · amber occupied · white pose',8,17);
 }
 function drawMissionMap(pos,obstructed){
  const cv=$('missionMap');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
@@ -294,6 +325,21 @@ function frame(now){
    if(Math.floor(data.time/.02)!==Math.floor((data.time+simStep)/.02))controller();
    mujoco.mj_step(model,data);
    accumulator-=simStep;steps++;
+  }
+  if(data.time-lastScan>=.5){
+    lastScan=data.time;
+    const p=data.qpos,v=data.qvel;
+    const trueYaw=yawOfQuaternion(Array.from(p.slice(3,7)));
+    const scan=simulateScan([p[0],p[1],p[2],trueYaw],{beams:64,maxRange:18,seed:slamSeed++});
+    // A noisy body-frame velocity/gyro sensor proxy. This intentionally
+    // injects bias and does not expose ground-truth position to the estimator.
+    const vx=Math.cos(trueYaw)*v[0]+Math.sin(trueYaw)*v[1];
+    const vy=-Math.sin(trueYaw)*v[0]+Math.cos(trueYaw)*v[1];
+    const dt=previousYaw===null?0:Math.max(.001,data.time-(slam.lastT??data.time));
+    const gyro=previousYaw===null?0:Math.atan2(Math.sin(trueYaw-previousYaw),Math.cos(trueYaw-previousYaw))/Math.max(.5,dt);
+    previousYaw=trueYaw;
+    slam.update(data.time,{bodyVx:vx+odomBiasX+.025*Math.sin(data.time*7.2),bodyVy:vy+odomBiasY+.023*Math.cos(data.time*5.8),yawRate:gyro+odomYawBias},scan);
+    slamTruthError=slam.evaluate([p[0],p[1]]);
   }
   if(data.time-lastRadio>=.5){
     lastRadio=data.time;
@@ -351,7 +397,7 @@ on('mission',()=>{
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -366,6 +412,8 @@ window.addEventListener('keydown',event=>{
 for(const [id,fn] of [['wind',v=>wind=v],['speed',v=>missionSpeed=v]]){
  $(id).addEventListener('input',e=>{fn(Number(e.target.value));$(id+'val').textContent=Number(e.target.value).toFixed(2)+(id==='wind'?' N':' m/s');});
 }
+on('resetSlam',()=>{slam.reset();previousYaw=null;lastScan=-1;report('GPS-denied mapping map and pose estimate reset.');});
+$('navSource').addEventListener('change',()=>{report('Horizontal navigation input: '+($('navSource').value==='slam'?'GPS-denied scan-matched odometry':'simulator ground truth'));});
 on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-second critical radio alert');});
 $('radioMode').addEventListener('change',()=>{if(!ready)return;radio.reset();lastRadio=-1;report('Reset radio emulator: '+$('radioMode').selectedOptions[0].textContent);});
 on('export',()=>{
@@ -400,7 +448,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;
- mission=false;flightLog=[];rotorState=[0,0,0,0];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;flightLog=[];rotorState=[0,0,0,0];slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
