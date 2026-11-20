@@ -111,7 +111,7 @@ let wind=.25,missionSpeed=1.5,flightLog=[];
 let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
 const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
-const slam=new PlanarSLAM();let lastScan=-1,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
+const slam=new PlanarSLAM();const slamLog=[];let lastScan=-1,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
 function report(message) {
@@ -346,6 +346,12 @@ function frame(now){
     previousYaw=trueYaw;
     slam.update(data.time,{bodyVx:vx+odomBiasX+.025*Math.sin(data.time*7.2),bodyVy:vy+odomBiasY+.023*Math.cos(data.time*5.8),yawRate:gyro+odomYawBias},scan);
     slamTruthError=slam.evaluate([p[0],p[1]]);
+    slamLog.push({t:Number(data.time.toFixed(3)),range_min:.08,range_max:scan.maxRange,
+      angle_min:-Math.PI,angle_increment:2*Math.PI/scan.ranges.length,
+      ranges:scan.ranges.map(v=>Number(v.toFixed(3))),
+      odom:{x:Number(slam.odomPose.x.toFixed(4)),y:Number(slam.odomPose.y.toFixed(4)),yaw:Number(slam.odomPose.yaw.toFixed(5))},
+      estimated:{x:Number(slam.pose.x.toFixed(4)),y:Number(slam.pose.y.toFixed(4)),yaw:Number(slam.pose.yaw.toFixed(5))}});
+    if(slamLog.length>12000)slamLog.shift();
   }
   if(data.time-lastRadio>=.5){
     lastRadio=data.time;
@@ -411,7 +417,7 @@ on('mission',()=>{
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -426,10 +432,17 @@ window.addEventListener('keydown',event=>{
 for(const [id,fn] of [['wind',v=>wind=v],['speed',v=>missionSpeed=v]]){
  $(id).addEventListener('input',e=>{fn(Number(e.target.value));$(id+'val').textContent=Number(e.target.value).toFixed(2)+(id==='wind'?' N':' m/s');});
 }
-on('resetSlam',()=>{slam.reset();previousYaw=null;lastScan=-1;report('GPS-denied mapping map and pose estimate reset.');});
+on('resetSlam',()=>{slam.reset();slamLog.length=0;previousYaw=null;lastScan=-1;report('GPS-denied mapping map and pose estimate reset.');});
 $('navSource').addEventListener('change',()=>{report('Horizontal navigation input: '+($('navSource').value==='slam'?'GPS-denied scan-matched odometry':'simulator ground truth'));});
 on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-second critical radio alert');});
 $('radioMode').addEventListener('change',()=>{if(!ready)return;radio.reset();lastRadio=-1;report('Reset radio emulator: '+$('radioMode').selectedOptions[0].textContent);});
+on('exportSlam',()=>{
+ if(!slamLog.length){report('No LiDAR/odometry scan frames to export');return;}
+ const blob=new Blob([slamLog.map(s=>JSON.stringify(s)).join('\n')+'\n'],{type:'application/x-ndjson'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mars-lora-lidar-odom.jsonl';a.click();
+ setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+ report('Exported '+slamLog.length+' native MuJoCo LiDAR scans with drifty odometry for ROS 2 replay');
+});
 on('export',()=>{
  if(!flightLog.length){report('No flight trace to export');return;}
  const header='time_s,x_m,y_m,z_m,qw,qx,qy,qz,vx_mps,vy_mps,vz_mps,rotor1_N,rotor2_N,rotor3_N,rotor4_N,target_x,target_y,target_z,xy_error_m,z_error_m,tilt_deg,obstacle_clearance_m,contact_count,rssi_dbm,sf,generated,received,aoi_s';
@@ -462,7 +475,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;
- mission=false;flightLog=[];rotorState=[0,0,0,0];slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
