@@ -1,0 +1,30 @@
+{
+  "model": "synthetic raw LoRa link abstraction; not validated RF/LoRaWAN",
+  "seeds": 20,
+  "trial_count": 720,
+  "policies": [
+    "fixed",
+    "reactive",
+    "priority",
+    "mars"
+  ],
+  "speeds_mps": [
+    2,
+    5,
+    9
+  ],
+  "shadow_sigma_db": [
+    1,
+    4,
+    8
+  ],
+  "duration_s": 360,
+  "dt_s": 0.5,
+  "caveats": [
+    "ideal SF synchronization",
+    "synthetic contention",
+    "kinematic trajectory",
+    "TX-only radio-energy proxy",
+    "no mission safety proof"
+  ]
+}
