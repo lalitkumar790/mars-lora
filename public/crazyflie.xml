@@ -1,5 +1,5 @@
 <mujoco model="crazyflie2_inspection">
- <compiler angle="radian" autolimits="true"/><option timestep="0.002" gravity="0 0 -9.81" integrator="RK4"/>
+ <compiler angle="radian" autolimits="true"/><option timestep="0.004" gravity="0 0 -9.81" integrator="RK4"/>
  <worldbody>
   <geom name="ground" type="plane" size="60 60 .1" friction="1 .01 .001" rgba=".1 .18 .23 1"/>
   <light pos="0 0 20" dir="0 0 -1" directional="true"/>
