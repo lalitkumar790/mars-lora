@@ -7,6 +7,7 @@ import {loadAirframeCAD,PHYSICAL_AIRFRAMES} from './airframes.js';
 import {withCity,addCityToScene,CITY_BUILDINGS} from './city.js';
 import {WaypointTracker} from './trajectory.js';
 import {scanHazard} from './avoidance.js';
+import {planInteractiveRoute,predictCoverage} from './rf_route_planner.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -113,6 +114,7 @@ for(let i=0;i<waypointPositions.length;i++){
 let airframe='heavy', mjMass=1.325, armX=.14,armY=.18, momentScale=1, modelThrustMax=13;
 let visualInitialized=false;
 const pathTracker=new WaypointTracker();let pathError=0,speedReference=0;
+let currentPlan=null;
 let sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};let hazard={blocked:false,distance:Infinity};let obstacleHoldTime=0;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
@@ -265,6 +267,8 @@ function updateUI(){
  $('rfShadow').textContent='Simulated '+(rs.obstructed?'NLOS obstacle blockage':'LOS')+' · range '+rs.distance.toFixed(1)+' m. RSSI shadowing stochastic; derived PDR and AoI are model outputs, not physical measurements.';
  drawMissionMap([x,y,z],rs.obstructed);
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
+ $('pathError').textContent=pathError.toFixed(2)+' m';
+ $('planRF').textContent=(predictCoverage([x,y,z]).p*100).toFixed(0)+'%';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('scanBeams').textContent=slam.lastScan?slam.lastScan.valid+'/'+slam.lastScan.ranges.length:'—';
  $('slamScans').textContent=String(slam.scanCount);
@@ -327,22 +331,31 @@ function drawSLAMMap(){
 }
 function drawMissionMap(pos,obstructed){
  const cv=$('missionMap');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
- const w=cv.width,h=cv.height,scale=Math.min(w/26,h/26),cx=w/2,cy=h/2;
- const px=x=>cx+x*scale,py=y=>cy-y*scale;
+ const w=cv.width,h=cv.height,pad=24;
+ const way=waypointPositions;
+ const minx=Math.min(-12,pos[0],...way.map(p=>p[0]))-4;
+ const maxx=Math.max(12,pos[0],...way.map(p=>p[0]))+4;
+ const miny=Math.min(-12,pos[1],...way.map(p=>p[1]))-4;
+ const maxy=Math.max(12,pos[1],...way.map(p=>p[1]))+4;
+ const scale=Math.min((w-2*pad)/(maxx-minx),(h-2*pad)/(maxy-miny));
+ const px=x=>pad+(x-minx)*scale,py=y=>h-pad-(y-miny)*scale;
  ctx.fillStyle='#0b2031';ctx.fillRect(0,0,w,h);
  ctx.strokeStyle='#223f52';ctx.lineWidth=1;
- for(let v=-12;v<=12;v+=2){ctx.beginPath();ctx.moveTo(px(v),0);ctx.lineTo(px(v),h);ctx.stroke();ctx.beginPath();ctx.moveTo(0,py(v));ctx.lineTo(w,py(v));ctx.stroke();}
- for(const o of obstacles){
-  ctx.fillStyle='#8b4854';ctx.globalAlpha=.9;
+ for(let x=Math.ceil(minx/5)*5;x<maxx;x+=5){ctx.beginPath();ctx.moveTo(px(x),0);ctx.lineTo(px(x),h);ctx.stroke();}
+ for(let y=Math.ceil(miny/5)*5;y<maxy;y+=5){ctx.beginPath();ctx.moveTo(0,py(y));ctx.lineTo(w,py(y));ctx.stroke();}
+ for(const o of [...obstacles,...CITY_BUILDINGS]){
+  if(o.x+o.hx<minx||o.x-o.hx>maxx||o.y+o.hy<miny||o.y-o.hy>maxy)continue;
+  ctx.fillStyle='#8b4854';ctx.globalAlpha=.8;
   ctx.fillRect(px(o.x-o.hx),py(o.y+o.hy),o.hx*2*scale,o.hy*2*scale);
  }
- ctx.globalAlpha=1;ctx.strokeStyle='#d8a759';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();
- missionWaypoints.forEach((p,i)=>i===0?ctx.moveTo(px(p[0]),py(p[1])):ctx.lineTo(px(p[0]),py(p[1])));ctx.stroke();ctx.setLineDash([]);
- ctx.strokeStyle=obstructed?'#ffac77':'#61ddeb';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px(0),py(-2));ctx.lineTo(px(pos[0]),py(pos[1]));ctx.stroke();
- ctx.fillStyle='#78f2c1';ctx.beginPath();ctx.arc(px(0),py(-2),5,0,Math.PI*2);ctx.fill();
- ctx.fillStyle='#6adfff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),6,0,Math.PI*2);ctx.fill();
- ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),9,0,Math.PI*2);ctx.stroke();
- ctx.fillStyle='#b9d2e5';ctx.font='12px sans-serif';ctx.fillText('UAV altitude '+pos[2].toFixed(1)+' m | WP '+(waypointIndex+1)+'/'+missionWaypoints.length,8,17);
+ ctx.globalAlpha=1;ctx.strokeStyle=currentPlan?.method==='rf_aware'?'#79e1ab':'#d8a759';ctx.lineWidth=2;
+ ctx.setLineDash([5,4]);ctx.beginPath();
+ way.forEach((p,i)=>i===0?ctx.moveTo(px(p[0]),py(p[1])):ctx.lineTo(px(p[0]),py(p[1])));ctx.stroke();ctx.setLineDash([]);
+ ctx.strokeStyle=obstructed?'#ffac77':'#61ddeb';ctx.lineWidth=1;ctx.beginPath();
+ ctx.moveTo(px(pos[0]),py(pos[1]));ctx.lineTo(px(Math.max(minx,Math.min(maxx,230))),py(Math.max(miny,Math.min(maxy,220))));ctx.stroke();
+ ctx.fillStyle='#6adfff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),5,0,Math.PI*2);ctx.fill();
+ ctx.strokeStyle='#fff';ctx.beginPath();ctx.arc(px(pos[0]),py(pos[1]),8,0,Math.PI*2);ctx.stroke();
+ ctx.fillStyle='#b9d2e5';ctx.font='12px sans-serif';ctx.fillText('UAV z '+pos[2].toFixed(1)+' m · WP '+(waypointIndex+1)+'/'+way.length,8,17);
 }
 function resize(){
  const root=$('viewport');
@@ -434,16 +447,35 @@ on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1]
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
 on('mission',()=>{
  if(!ready)return;
- if($('navSource').value==='slam' && $('missionType').value!=='mapping'){
-   report('GPS-denied inspection refused: 7 m overhead route has no horizontal LiDAR landmarks. Select 3.2 m landmark survey or use physics-truth reference navigation.');return;
+ const kind=$('missionType').value;
+ if($('navSource').value==='slam' && kind!=='mapping'){
+   report('GPS-denied city flight refused: 2D LiDAR SLAM has not been validated for high-altitude urban 3D navigation. Select landmark survey or use the map-known physics-reference mode.');return;
  }
- const route=$('missionType').value==='mapping'?mappingWaypoints:missionWaypoints;
+ const isAStar=kind==='astar_shortest'||kind==='astar_rf';
+ let route=kind==='mapping'?mappingWaypoints:missionWaypoints;
+ if(isAStar){
+   try{
+      currentPlan=planInteractiveRoute(kind==='astar_rf'?'rf_aware':'shortest',airframe==='crazyflie'?.08:.32);
+      route=currentPlan.route;
+      $('plannerStats').textContent='Computed '+currentPlan.method+' 3D A* with '+currentPlan.expanded+' expanded nodes; altitude, clearance and predicted LoRa path loss are checked over the physics city.';
+      $('planDistance').textContent=currentPlan.length_m.toFixed(1)+' m';
+      $('planClearance').textContent=currentPlan.clearance.toFixed(2)+' m';
+      $('planRF').textContent=(currentPlan.coverage.reduce((a,b)=>a+b,0)/currentPlan.coverage.length*100).toFixed(0)+'%';
+   }catch(error){
+      report('A* planner refused mission: '+error.message);return;
+   }
+ }else{
+   currentPlan=null;$('planDistance').textContent='—';$('planClearance').textContent='—';
+ }
  useRoute(route);
- if(plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
+ if(!isAStar && plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
    report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
  }
  mission=true;pathTracker.reset();goTo(0);
- if($('missionType').value==='mapping'){
+ if(isAStar){
+   setMode(currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
+   report('Map-known 3D plan '+currentPlan.length_m.toFixed(1)+' m; conservative static clearance '+currentPlan.clearance.toFixed(2)+' m. Browser packets remain a synthetic model.');
+ }else if($('missionType').value==='mapping'){
    setMode('GPS-denied landmark survey');
    report('3.2 m mapping survey: LiDAR returns from vertical landmarks support occupancy mapping. Navigation source: '+$('navSource').value+'.');
  }else{
@@ -457,7 +489,7 @@ on('cityCamera',()=>{
  follow=false;camera.position.set(52,-65,57);orbit.target.set(0,0,8);orbit.update();
  report('City overview: inspecting the physically collidable urban canyon. Use OrbitControls to zoom into streets.');
 });
-on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;currentPlan=null;desired=[0,0,.5];waypointIndex=0;flightLog=[];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -517,7 +549,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;pathTracker.reset();hazard={blocked:false,distance:Infinity};
- mission=false;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;currentPlan=null;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
