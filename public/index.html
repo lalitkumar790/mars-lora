@@ -83,6 +83,15 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <h2>Research evaluation parameters</h2>
 <p><b>Link:</b> delivery ratio, critical deadline ratio, AoI, estimated RSSI / SF,  packet airtime and queue. <b>Flight:</b> trajectory error, safety clearance, contacts, mission time, thrust and disturbance response. These live exploratory values are distinct from GitHub's seeded experiments and are not publication-grade calibrated RF measurements.</p>
 <h2>Waypoints</h2><p id="waypoints">No active mission.</p>
+<h2>RF link processing</h2>
+<canvas id="rfChart" width="450" height="140" aria-label="LoRa RSSI and age of information history" style="width:100%;height:110px;border:1px solid #263e55;border-radius:8px"></canvas>
+<div class="met" style="margin-top:10px">
+<div class="metric"><div class="k">TX airtime</div><div class="v" id="rfAirtime">0.0 s</div></div>
+<div class="metric"><div class="k">TX energy proxy</div><div class="v" id="rfEnergy">0.00 J</div></div>
+<div class="metric"><div class="k">Lost / expired</div><div class="v" id="rfDrops">0 / 0</div></div>
+<div class="metric"><div class="k">Critical on time</div><div class="v" id="rfDeadline">—</div></div>
+</div>
+<p id="rfShadow">Simulated link state pending.</p>
 <h2>Flight events</h2><div id="events" aria-live="polite"></div>
 <section class="controls" style="margin-top:12px"><button id="export" class="full">↓ Export flight CSV</button><button id="camera" class="full">⌾ Toggle follow camera</button></section>
 <h2>Project</h2><div class="links"><a href="https://github.com/lalitkumar790/mars-lora/tree/main/mujoco_sim" target="_blank" rel="noopener">MuJoCo model and Python counterpart ↗</a><a href="https://github.com/lalitkumar790/mars-lora" target="_blank" rel="noopener">Source repository ↗</a></div>
