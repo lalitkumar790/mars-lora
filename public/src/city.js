@@ -33,6 +33,8 @@ export function withCity(xml,enabled=true){
 }
 export function addCityToScene(scene){
  const group=new THREE.Group();
+ const windowTransforms=[];
+ const windowGeometry=new THREE.PlaneGeometry(.86,.94);
  const materials=[
   new THREE.MeshStandardMaterial({color:0x46576a,roughness:.82}),
   new THREE.MeshStandardMaterial({color:0x536a78,roughness:.75}),
@@ -45,21 +47,23 @@ export function addCityToScene(scene){
   mesh.position.set(b.x,b.y,b.z);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
   const roof=new THREE.Mesh(new THREE.BoxGeometry(2*b.hx+.2,2*b.hy+.2,.15),new THREE.MeshStandardMaterial({color:0x263949,roughness:.85}));
   roof.position.set(b.x,b.y,b.z+b.hz+.07);group.add(roof);
-  const windows=new THREE.Group();
-  const winMat=new THREE.MeshBasicMaterial({color:0x93b9c6,transparent:true,opacity:.28});
-  const floors=Math.min(17,Math.floor((2*b.hz)/2.5));
+  const floors=Math.min(12,Math.floor((2*b.hz)/2.5));
   for(let level=1;level<=floors;level++){
    const z=level*2.4;
-   for(const side of [-1,1]){
-    for(let slot=-2;slot<=2;slot++){
-      const plane=new THREE.Mesh(new THREE.PlaneGeometry(.86,.94),winMat);
-      plane.position.set(b.x+slot*(b.hx*.68),b.y+side*(b.hy+.006),z);
-      plane.rotation.x=side===1?Math.PI/2:-Math.PI/2;windows.add(plane);
-    }
+   for(const side of [-1,1])for(let slot=-1;slot<=1;slot++){
+    windowTransforms.push([b.x+slot*(b.hx*.68),b.y+side*(b.hy+.006),z,side]);
    }
   }
-  group.add(windows);
  }
+ const winMat=new THREE.MeshBasicMaterial({color:0x93b9c6,transparent:true,opacity:.28,side:THREE.DoubleSide});
+ const windows=new THREE.InstancedMesh(windowGeometry,winMat,windowTransforms.length);
+ const obj=new THREE.Object3D();
+ for(let i=0;i<windowTransforms.length;i++){
+   const [x,y,z,side]=windowTransforms[i];
+   obj.position.set(x,y,z);obj.rotation.set(side===1?Math.PI/2:-Math.PI/2,0,0);
+   obj.updateMatrix();windows.setMatrixAt(i,obj.matrix);
+ }
+ windows.instanceMatrix.needsUpdate=true;group.add(windows);
  // Streets are visual surfaces only; MuJoCo has a continuous ground plane.
  const roadMat=new THREE.MeshStandardMaterial({color:0x1c3039,roughness:.98});
  const stripeMat=new THREE.MeshBasicMaterial({color:0xa6aa91});
