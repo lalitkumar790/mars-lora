@@ -18,6 +18,10 @@
   <geom name="inspection_building_1" type="box" pos="5 4 1.4" size="1.1 1.4 1.4" rgba=".31 .4 .51 1"/>
   <geom name="inspection_building_2" type="box" pos="-5 5 1.9" size="1.25 1.1 1.9" rgba=".35 .38 .47 1"/>
   <geom name="inspection_building_3" type="box" pos="5 -4 1.6" size="1.4 1.0 1.6" rgba=".32 .39 .50 1"/>
+  <geom name="inspection_container" type="box" pos="-3 -4 .6" size="2 .7 .6" rgba=".52 .33 .25 1"/>
+  <geom name="inspection_tower" type="cylinder" pos="1 8 2.5" size=".24 2.5" rgba=".42 .5 .54 1"/>
+  <geom name="inspection_pylon" type="box" pos="-8 0 2.7" size=".32 .32 2.7" rgba=".4 .48 .6 1"/>
+  <geom name="overhead_beam" type="box" pos="-5 0 5.45" size="3.3 .24 .23" rgba=".57 .6 .65 1"/>
  </worldbody>
  <actuator>
   <motor name="thrust1" site="rotor1" gear="0 0 1 0 0 0" ctrllimited="true" ctrlrange="0 15"/>
