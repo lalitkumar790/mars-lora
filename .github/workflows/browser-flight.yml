@@ -27,6 +27,8 @@ jobs:
         run: cd public && node tests/mission-safety.mjs
       - name: Check GPS-denied scan mapping invariants
         run: cd public && node tests/slam-safety.mjs
+      - name: Validate urban scene, path tracking and sensor obstacle guard
+        run: cd public && node tests/city-navigation.mjs
       - name: Validate Vite production bundle
         run: cd public && npm run build
       - name: Start site and exercise flight controls
