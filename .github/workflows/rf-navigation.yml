@@ -35,11 +35,22 @@ jobs:
         run: python analysis/paired_rf_navigation.py --trials results/rf_navigation/trials.csv --output results/rf_navigation/paired_effects.csv
       - name: Generate paper-ready empirical route and delivery figures
         run: python -m analysis.plot_rf_navigation --results results/rf_navigation --figures paper/figures
+      - name: Install manuscript PDF compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq latexmk texlive-latex-base texlive-latex-recommended texlive-publishers poppler-utils
+      - name: Compile final paper with executed UAV figures and eight-page guard
+        run: |
+          cd paper
+          latexmk -pdf -interaction=nonstopmode -halt-on-error paper.tex
+          pages=$(pdfinfo paper.pdf | awk '/^Pages:/ {print $2}')
+          echo "Final RF-aware research manuscript: $pages pages including references"
+          test "$pages" -le 8
       - name: Commit experiment artifacts only to GitHub
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add results/rf_navigation paper/figures/rf_aware_routes.pdf paper/figures/rf_aware_routes.png paper/figures/rf_aware_tradeoff.pdf paper/figures/rf_aware_tradeoff.png
+          git add results/rf_navigation paper/figures/rf_aware_routes.pdf paper/figures/rf_aware_routes.png paper/figures/rf_aware_tradeoff.pdf paper/figures/rf_aware_tradeoff.png paper/paper.pdf
           if ! git diff --cached --quiet; then
             git commit -m 'results: MuJoCo-executed A* RF-aware navigation with paired LoRa measurements [skip ci]'
             for attempt in 1 2 3 4 5; do
@@ -58,3 +69,4 @@ jobs:
             results/rf_navigation/*
             paper/figures/rf_aware_routes.pdf
             paper/figures/rf_aware_tradeoff.pdf
+            paper/paper.pdf
