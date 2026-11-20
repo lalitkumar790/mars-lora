@@ -57,6 +57,19 @@ Figures are generated directly from the saved summary CSV and show speed-related
 \IfFileExists{figures/outage.pdf}{\includegraphics[width=\linewidth]{figures/outage.pdf}}{\fbox{Outage plot pending verified run}}
 \caption{Fraction of time without any delivery for over 15 s.}\end{figure}
 Interpretation will report critical timeliness jointly with mission overhead and delivery. Longer SF airtime may offset increased weak-signal sensitivity. Negative findings remain publishable when limitations are explicit.
+\section{Controlled Factorial Ablation}
+We additionally implement a separate $2^3$ factorial experiment with three binary decisions: adaptive SF ($A$), critical-first packet scheduling ($P$), and a conservative 20\% mission-speed reduction ($S$). All eight combinations use a \emph{fixed 2-s telemetry generation interval} and the same 360-s simulation horizon, with time-indexed, seeded fading and receiver draws. Three speeds, three shadowing intensities and 20 seeds give 1,440 executed synthetic-model trials. These ablations reduce traffic-rate and mission-duration confounding in the earlier four-policy study but remain conditional on the simplified radio assumptions.
+\begin{table}[t]\centering\caption{Factorial model trial means ($v=2$ m/s, $\sigma=4$ dB, 20 seeds). $A$: SF adaptation; $P$: message priority; $S$: 20\% slowdown.}\label{tab:factorial}
+\begin{tabular}{lrrr}\toprule
+Variant & Delivery & Alert timely & TX energy (J)\\\midrule
+A0P0S0 & .602 & .557 & 4.125\\
+A0P1S0 & .602 & .579 & 4.125\\
+A1P0S0 & .763 & .793 & 12.255\\
+A1P1S0 & .763 & .829 & 12.255\\
+A1P1S1 & .734 & .750 & 14.291\\
+\bottomrule\end{tabular}\end{table}
+For the shown condition, adding adaptive SF with unchanged flight speed and traffic raises mean critical deadline satisfaction from .557 (A0P0S0) to .793 (A1P0S0), but increases the transmitter energy proxy from 4.125 to 12.255 J. With adaptation enabled, the priority factor increases mean timely-alert delivery from .793 (A1P0S0) to .829 (A1P1S0). Adding unconditional slowdown (A1P1S1) \emph{reduces} alert timeliness to .750 while also reducing distance traveled during the fixed window by 20\%. Consequently, unconditional flight slowdown is not an effective strategy in this setting. We report descriptive means, not formal significance claims. Policy effects across the full parameter grid and paired confidence intervals are needed before generalizing.
+The adaptive-SF implementation relies on previous ACK-observed RSSI and a bounded five-second slope projection; it assumes the receiver follows all SF changes at no cost, making its gain optimistic. Receiver coordination and an explicitly timed SF handshake are priority corrections before a deployment claim.
 \section{Limitations and Deployment}
 The channel omits actual radio measurements, antenna orientation, real packet collisions, regulatory duty-cycle scheduling, and control-plane SF handshakes. The kinematic route does not demonstrate safe dynamics, obstacle avoidance or actuator feasibility. A global slowdown is not predictive mobility adaptation. Accordingly, results are hypothesis-generating simulation outcomes, not field evidence. Future validation should compare channel predictions with ns-3 or measured LoRa logs, replay time-aligned MuJoCo poses, and integrate ROS 2 flight autonomy.
 \section{Conclusion}
