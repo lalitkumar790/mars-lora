@@ -2,13 +2,19 @@
   {
     "airframe": "heavy",
     "completed": true,
-    "elapsed_s": 90.57,
+    "elapsed_s": 90.51,
     "waypoint_reached": 7,
     "min_clearance_m": 1.0,
     "contact_samples": 0,
-    "max_tilt_deg": 6.58,
-    "max_tracking_error_m": 6.51,
-    "xy_tracking_rms_m": 0.878
+    "max_tilt_deg": 6.6,
+    "max_tracking_error_m": 6.5,
+    "xy_tracking_rms_m": 0.878,
+    "route_waypoints": 7,
+    "end_position_xyz": [
+      -0.069,
+      0.075,
+      2.796
+    ]
   },
   {
     "airframe": "crazyflie",
@@ -17,8 +23,14 @@
     "waypoint_reached": 7,
     "min_clearance_m": 1.24,
     "contact_samples": 0,
-    "max_tilt_deg": 8.48,
+    "max_tilt_deg": 8.45,
     "max_tracking_error_m": 6.5,
-    "xy_tracking_rms_m": 0.926
+    "xy_tracking_rms_m": 0.926,
+    "route_waypoints": 7,
+    "end_position_xyz": [
+      -0.236,
+      0.44,
+      2.499
+    ]
   }
 ]
