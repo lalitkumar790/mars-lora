@@ -33,14 +33,14 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button data-move="x-">← Left</button><button data-move="x+">Right →</button>
 <button data-move="y-">↓ Backward</button><button data-move="z-">－ Altitude</button>
 </section>
-<h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam. These objects have MuJoCo collision geometry.</p>
+<h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam with MuJoCo collision geometry. Mission planner first climbs to a 7 m transit corridor above the tallest structure, then follows elevated waypoints and returns to base.</p>
 <label class="field" for="wind">Horizontal wind disturbance</label>
 <div class="rowfield"><input id="wind" type="range" min="0" max="3" step=".25" value=".25"><span id="windval" class="value">0.25 N</span></div>
 <label class="field" for="speed">Mission target speed</label>
 <div class="rowfield"><input id="speed" type="range" min=".5" max="3" step=".25" value="1.5"><span id="speedval" class="value">1.50 m/s</span></div>
 <label class="field" for="sf">LoRa spreading factor (illustrative link overlay)</label>
 <select id="sf"><option>SF7</option><option>SF8</option><option selected>SF9</option><option>SF10</option><option>SF11</option><option>SF12</option></select>
-<p>LoRa panel displays a simple estimated RSSI/margin. It is not a live ROS 2 connection or packet-level network co-simulation.</p>
+<p>LoRa provides a browser-side event-driven channel approximation coupled to actual MuJoCo pose. It is not a live ROS 2 connection, calibrated radio hardware or LoRaWAN stack.</p>
 <div class="notice">Physics runs locally in your browser via official MuJoCo WASM. Vercel serves the app; it does not run a remote Python simulator.</div>
 </aside>
 <main class="sim">
@@ -67,6 +67,21 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <div class="metric"><div class="k">TX queue</div><div class="v" id="radioQueue">0</div></div>
 </div>
 <p>Live raw-LoRa packet abstraction (ideal SF synchronization, synthetic fading/occupancy), driven by the drone's MuJoCo position. These are not published research results.</p>
+<h2>Physics & flight processing</h2>
+<div class="met">
+ <div class="metric"><div class="k">Target altitude</div><div class="v" id="desiredAlt">—</div></div>
+ <div class="metric"><div class="k">Altitude error</div><div class="v" id="altError">—</div></div>
+ <div class="metric"><div class="k">Body tilt</div><div class="v" id="tiltDeg">—</div></div>
+ <div class="metric"><div class="k">Obstacle clearance</div><div class="v" id="clearance">—</div></div>
+ <div class="metric"><div class="k">MuJoCo contacts</div><div class="v" id="contacts">0</div></div>
+</div>
+<canvas id="debugChart" width="450" height="140" aria-label="Physics altitude versus target plot" style="width:100%;height:110px;margin-top:12px;border:1px solid #263e55;border-radius:8px"></canvas>
+<p id="controllerState">Controller initializing.</p>
+<h2>LoRa packet processing</h2>
+<p id="packetState">No packets processed.</p>
+<p id="rfParams"></p>
+<h2>Research evaluation parameters</h2>
+<p><b>Link:</b> delivery ratio, critical deadline ratio, AoI, estimated RSSI / SF,  packet airtime and queue. <b>Flight:</b> trajectory error, safety clearance, contacts, mission time, thrust and disturbance response. These live exploratory values are distinct from GitHub's seeded experiments and are not publication-grade calibrated RF measurements.</p>
 <h2>Waypoints</h2><p id="waypoints">No active mission.</p>
 <h2>Flight events</h2><div id="events" aria-live="polite"></div>
 <section class="controls" style="margin-top:12px"><button id="export" class="full">↓ Export flight CSV</button><button id="camera" class="full">⌾ Toggle follow camera</button></section>
