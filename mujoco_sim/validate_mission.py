@@ -89,10 +89,10 @@ def run(airframe,duration=240,wind=.25,out=None):
                 yaw_moment=0 if airframe=="crazyflie" else clamp(-.01*yaw-.008*v[5],-.02,.02)
                 yaw_trim=0 if airframe=="crazyflie" else yaw_moment*(-1 if i%2==0 else 1)/(4*.0201)
                 demand=clamp(force/4+mx*y/(4*army*army)-my*x/(4*armx*armx)+yaw_trim,0,max_thrust)
-                rotor[i]+=(1-math.exp(-.02/.06))*(demand-rotor[i])
+                rotor[i]+=(1-math.exp(-.02/(.045 if airframe=='crazyflie' else .08)))*(demand-rotor[i])
                 data.ctrl[i]=clamp(rotor[i],0,max_thrust)
-            data.xfrc_applied[1,0]=wind*(mass/1.2)*math.sin(t*.6)-.18*mass*v[0]
-            data.xfrc_applied[1,1]=wind*(mass/1.2)*math.cos(t*.43)-.18*mass*v[1]
+            data.xfrc_applied[1,0]=wind*(.07 if airframe=='crazyflie' else 1)*math.sin(t*.6)-.18*mass*v[0]
+            data.xfrc_applied[1,1]=wind*(.07 if airframe=='crazyflie' else 1)*math.cos(t*.43)-.18*mass*v[1]
             data.xfrc_applied[1,2]=-.12*mass*v[2]
             tilt=math.degrees(math.hypot(roll,pitch))
             max_tilt=max(max_tilt,tilt)
