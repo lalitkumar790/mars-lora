@@ -207,20 +207,20 @@ function controller(){
   const demand=snap(t/4+mx*y/(4*armY*armY)-my*x/(4*armX*armX)+yawTrim,0,modelThrustMax);
   // Approximate first-order electronic motor response: 60 ms time constant,
   // updated at 50 Hz. Rotor RPM is NOT explicitly simulated.
-  rotorState[i]+=(1-Math.exp(-.02/.06))*(demand-rotorState[i]);
+  rotorState[i]+=(1-Math.exp(-.02/(airframe==='crazyflie'?.045:.08)))*(demand-rotorState[i]);
   data.ctrl[i]=snap(rotorState[i],0,modelThrustMax);
  }
  // The free body has body id 1. External force applied at its COM.
  if(data.xfrc_applied?.length>=12){
   // Force applied in world axes: wind disturbance + linear aero drag.
   // Drag coefficient is an uncalibrated approximation, not CFD.
-  data.xfrc_applied[6]=wind*(mjMass/1.2)*Math.sin(data.time*.6)-.18*mjMass*vel[0];
-  data.xfrc_applied[7]=wind*(mjMass/1.2)*Math.cos(data.time*.43)-.18*mjMass*vel[1];
+  data.xfrc_applied[6]=wind*(airframe==='crazyflie'?.07:1)*Math.sin(data.time*.6)-.18*mjMass*vel[0];
+  data.xfrc_applied[7]=wind*(airframe==='crazyflie'?.07:1)*Math.cos(data.time*.43)-.18*mjMass*vel[1];
   data.xfrc_applied[8]=-.12*mjMass*vel[2];
  }
  const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
  lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-nx,desired[1]-ny),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
-  windForce:wind*(mjMass/1.2),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
+  windForce:wind*(airframe==='crazyflie'?.07:1),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
  if(mission && navSlam && data.time-lastObservableTime>12){
    mission=false;desired=[nx,ny,Math.max(pos[2],3.2)];
    setMode('Localization lost — hold');
