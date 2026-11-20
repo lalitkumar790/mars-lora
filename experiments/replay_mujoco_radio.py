@@ -11,24 +11,7 @@ from collections import deque
 from pathlib import Path
 from statistics import mean,stdev
 from mars_lora.channel import airtime_s,SENSITIVITY_DBM,percentile
-
-def city():
-    state=37021
-    def rng():
-        nonlocal state
-        state=(1664525*state+1013904223)&0xffffffff
-        return state/4294967296
-    buildings=[]
-    for ix in range(-4,5):
-        for iy in range(-4,5):
-            if ix==0 and iy==0 or (abs(ix)<=1 and abs(iy)<=1):continue
-            x=ix*12.2+(rng()-.5)*1.9
-            y=iy*12.2+(rng()-.5)*1.9
-            if abs(x)<13 and abs(y)<13:continue
-            sx=3+rng()*1.4;sy=3+rng()*1.6;h=6+rng()*17
-            rng() # draw for color; preserved for exact JS seed sequence
-            buildings.append((x,y,h/2,sx,sy,h/2))
-    return buildings
+from mars_lora.urban_scene import city
 
 SCENE=[
  (5,4,1.4,1.1,1.4,1.4),(-5,5,1.9,1.25,1.1,1.9),
