@@ -10,7 +10,7 @@ export class LiveLink {
     this.generated=0;this.received=0;this.onTime=0;this.alerts=0;this.alertOnTime=0;
     this.latestStatus=0;this.lastRSSI=null;this.lastSNR=null;
     this.lastPacket=null;this.lastAck=-10;this.lastAdapt=0;this.failures=0;
-    this.shadow=0;this.nextShadow=-1;
+    this.shadow=0;this.nextShadow=-1;this.pending=null;this.txAir=0;this.txEnergy=0;this.expired=0;this.lost=0;this.distance=0;this.obstructed=false;
   }
   random() { this.seed=(1664525*this.seed+1013904223)>>>0;return this.seed/4294967296; }
   gaussian() {return Math.sqrt(-2*Math.log(Math.max(1e-10,this.random())))*Math.cos(2*Math.PI*this.random());}
@@ -47,8 +47,19 @@ export class LiveLink {
       this.shadow=.96*this.shadow+Math.sqrt(1-.96*.96)*this.gaussian()*4;
       this.nextShadow=t+.5;
     }
-    const rssi=14-31.2-40*Math.log10(d)-(this.blocked(xyz)?17:0)+this.shadow;
+    this.distance=d;this.obstructed=this.blocked(xyz);
+    const rssi=14-31.2-40*Math.log10(d)-(this.obstructed?17:0)+this.shadow;
     this.lastRSSI=rssi;
+    // Commit packet outcome only after its simulated transmission finishes.
+    if(this.pending && t>=this.pending.arrival){
+      const p=this.pending;this.pending=null;
+      this.lastPacket={ok:p.ok,alert:p.packet.alert,rssi:p.rssi,sf:p.sf,toa:p.toa,time:p.arrival,expired:false};
+      if(p.ok){
+        this.received++;this.lastAck=p.arrival;this.failures=0;
+        if(!p.packet.alert)this.latestStatus=Math.max(this.latestStatus,p.packet.created);
+        if(p.arrival<=p.packet.deadline){this.onTime++;if(p.packet.alert)this.alertOnTime++;}
+      }else{this.lost++;this.failures++;}
+    }
     if(mode==='adaptive' && t-this.lastAdapt>=5){
       this.lastAdapt=t;
       let target=this.sf;
@@ -62,26 +73,25 @@ export class LiveLink {
     if(mode==='priority')this.queue.sort((a,b)=>Number(b.alert)-Number(a.alert)||a.seq-b.seq);
     const packet=this.queue.shift();
     if(packet.deadline<t){
-      this.lastPacket={ok:false,expired:true,alert:packet.alert};
+      this.expired++;this.lastPacket={ok:false,expired:true,alert:packet.alert};
       return;
     }
     const toa=this.airtime(this.sf,packet.bytes), arrival=t+toa;
-    this.busy=arrival;
+    this.busy=arrival;this.txAir+=toa;this.txEnergy+=.12*toa;
     const margin=rssi-this.sensitivity(this.sf);
     const prob=.9/(1+Math.exp(-Math.max(-50,Math.min(50,margin))/1.8));
     const ok=this.random()<prob;
-    this.lastPacket={ok,alert:packet.alert,rssi,sf:this.sf,toa,time:arrival,expired:false};
-    if(ok) {
-      this.received++;this.lastAck=arrival;this.failures=0;
-      if(!packet.alert)this.latestStatus=packet.created;
-      if(arrival<=packet.deadline){this.onTime++;if(packet.alert)this.alertOnTime++;}
-    } else this.failures++;
+    this.pending={packet,ok,rssi,sf:this.sf,toa,arrival};
   }
   sensitivity(sf) {return {7:-123,8:-126,9:-129,10:-132,11:-134.5,12:-137}[sf];}
   summary(t) {
     return {sf:this.sf,pdr:this.generated?100*this.received/this.generated:100,
       aoi:Math.max(0,t-this.latestStatus),alerts:this.alertOnTime+'/'+this.alerts,
       queue:this.queue.length,rssi:this.lastRSSI,margin:this.lastRSSI-this.sensitivity(this.sf),
-      packet:this.lastPacket};
+      packet:this.lastPacket,expired:this.expired,lost:this.lost,
+      txAirtime:this.txAir,txEnergy:this.txEnergy,
+      distance:this.distance,obstructed:this.obstructed,
+      alertDeadlineRatio:this.alerts?100*this.alertOnTime/this.alerts:null,
+      totalOnTime:this.onTime};
   }
 }
