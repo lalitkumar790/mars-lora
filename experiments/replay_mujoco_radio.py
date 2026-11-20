@@ -65,7 +65,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
     generated=delivered=alert_n=alert_ok=expired=0
     busy_until=0.;sf=9;next_alert=25.;last_ack=-float('inf')
     last_sample=0.;aoi=[];outage=[];energy=airtime=0
-    nlos=0;changes=0;last_rssi=None
+    nlos=0;changes=0;last_rssi=None;pending=[]
     trace_times=[row[0] for row in trace]
     for k in range(N):
         t=k*step
@@ -80,6 +80,14 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
         nlos+=int(blocked)
         d=max(1.,math.dist(p,gcs))
         rssi=14-31.2-40*math.log10(d)-(17 if blocked else 0)+fades[k]
+        # ACKs and telemetry are delivered only after LoRa time-on-air
+        # completes, never at the beginning of transmission.
+        arrived=[entry for entry in pending if entry[0]<=t+1e-9]
+        pending=[entry for entry in pending if entry[0]>t+1e-9]
+        for arrival,critical,made,deadline,observed_rssi in arrived:
+            delivered+=1;last_ack=arrival;last_rssi=observed_rssi
+            if not critical:last_sample=max(last_sample,made)
+            if critical and arrival<=deadline:alert_ok+=1
         if k%8==0: # 2-second telemetry, fixed across policies
             queue.append((t,t+8,False,20));generated+=1
         if t+.001>=next_alert:
@@ -104,9 +112,9 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
         margin=rssi-SENSITIVITY_DBM[sf]
         probability=.9/(1+math.exp(-max(-55,min(55,margin))/1.8))
         if draws[k]<probability:
-            delivered+=1;last_ack=busy_until;last_rssi=rssi
-            if not critical:last_sample=max(last_sample,made)
-            if critical and busy_until<=deadline:alert_ok+=1
+            pending.append((busy_until,critical,made,deadline,rssi))
+    # Final arrivals still in flight beyond the mission horizon are NOT
+    # credited to on-mission delivery. Avoids overstating deadline success.
     return {
         'policy':policy,'seed':seed,'gcs_x':gcs[0],'gcs_y':gcs[1],'gcs_z':gcs[2],
         'shadow_sigma_db':shadow_sigma,'pdr':delivered/max(1,generated),
