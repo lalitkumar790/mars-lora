@@ -60,21 +60,23 @@ export class PlanarSLAM {
  constructor({size=100,resolution=.35,seed=314159}={}) {
    this.size=size;this.resolution=resolution;this.seed=seed;
    this.map=new Float32Array(size*size);
-   this.pose={x:0,y:0,yaw:0};
+   this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};
    this.lastT=null;this.scanCount=0;this.matches=0;
    this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];
    this.initialized=false;this.lastScan=null;
  }
- reset(){this.map.fill(0);this.pose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
+ reset(){this.map.fill(0);this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
  index(x,y) {
    const gx=Math.floor(x/this.resolution+this.size/2),gy=Math.floor(y/this.resolution+this.size/2);
    return gx>=0&&gy>=0&&gx<this.size&&gy<this.size?gy*this.size+gx:-1;
  }
  integrateOdom(dt,vx,vy,yawRate) {
    // Input represents body-frame VIO/IMU-velocity pseudo-measurements, not GPS.
-   this.pose.yaw=wrapAngle(this.pose.yaw+yawRate*dt);
-   const c=Math.cos(this.pose.yaw),s=Math.sin(this.pose.yaw);
-   this.pose.x+=(c*vx-s*vy)*dt;this.pose.y+=(s*vx+c*vy)*dt;
+   for(const p of [this.pose,this.odomPose]){
+     p.yaw=wrapAngle(p.yaw+yawRate*dt);
+     const c=Math.cos(p.yaw),s=Math.sin(p.yaw);
+     p.x+=(c*vx-s*vy)*dt;p.y+=(s*vx+c*vy)*dt;
+   }
  }
  score(scan,pose) {
    let used=0,score=0;
