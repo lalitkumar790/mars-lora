@@ -2,7 +2,7 @@ import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
 import { PlanarSLAM,simulateScan,yawOfQuaternion } from './slam.js';
-import { missionWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
+import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -93,7 +93,12 @@ const velocityArrow=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vec
 const thrustArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(),1,0xffbd69,.3,.15);
 scene.add(velocityArrow,thrustArrow);
 const waypointObjects=[];
-const waypointPositions=missionWaypoints;
+function useRoute(route){
+ waypointPositions=route;plannedLine.geometry.dispose();plannedLine.geometry=new THREE.BufferGeometry().setFromPoints(route.map(p=>new THREE.Vector3(...p)));plannedLine.computeLineDistances();
+ for(const obj of waypointObjects){scene.remove(obj);obj.geometry.dispose();obj.material.dispose();}waypointObjects.length=0;
+ for(const [x,y,z] of route){const m=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));m.position.set(x,y,z);scene.add(m);waypointObjects.push(m);}
+}
+let waypointPositions=missionWaypoints;
 for(let i=0;i<waypointPositions.length;i++){
  const [x,y,z]=waypointPositions[i];
  const marker=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));
@@ -389,11 +394,19 @@ on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1]
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
 on('mission',()=>{
  if(!ready)return;
+ const route=$('missionType').value==='mapping'?mappingWaypoints:missionWaypoints;
+ useRoute(route);
  if(plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
    report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
  }
- mission=true;goTo(0);setMode('Collision-aware elevated mission');
- report('Climb to '+transitAltitude.toFixed(1)+' m above obstacle roofs before cross-site travel.');
+ mission=true;goTo(0);
+ if($('missionType').value==='mapping'){
+   setMode('GPS-denied landmark survey');
+   report('3.2 m mapping survey: LiDAR returns from vertical landmarks support occupancy mapping. Navigation source: '+$('navSource').value+'.');
+ }else{
+   setMode('Collision-aware elevated mission');
+   report('Climb to '+transitAltitude.toFixed(1)+' m above obstacle roofs before cross-site travel.');
+ }
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
