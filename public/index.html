@@ -56,6 +56,17 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <div class="metric"><div class="k">3D velocity</div><div class="v" id="velocity">0.00</div></div><div class="metric"><div class="k">Rotor thrust</div><div class="v" id="thrust">0 N</div></div>
 <div class="metric"><div class="k">Distance to GCS</div><div class="v" id="distance">0 m</div></div><div class="metric"><div class="k">Link estimate</div><div class="v" id="rssi">—</div></div></div>
 <h2>Link status</h2><p id="linklabel">Radio estimate pending initialization.</p>
+<h2>Live LoRa link emulator</h2>
+<label class="field" for="radioMode">Radio policy</label>
+<select id="radioMode"><option value="fixed">Fixed SF9</option><option value="adaptive">Feedback adaptive SF</option><option value="priority">Critical-message priority</option></select>
+<section class="controls" style="margin-top:9px"><button id="alert" class="full danger">⚠ Inject critical alert</button></section>
+<div class="met" style="margin-top:12px">
+<div class="metric"><div class="k">Delivery</div><div class="v" id="radioPdr">—</div></div>
+<div class="metric"><div class="k">Telemetry age</div><div class="v" id="radioAoi">—</div></div>
+<div class="metric"><div class="k">Critical deadlines</div><div class="v" id="radioAlerts">0/0</div></div>
+<div class="metric"><div class="k">TX queue</div><div class="v" id="radioQueue">0</div></div>
+</div>
+<p>Live raw-LoRa packet abstraction (ideal SF synchronization, synthetic fading/occupancy), driven by the drone's MuJoCo position. These are not published research results.</p>
 <h2>Waypoints</h2><p id="waypoints">No active mission.</p>
 <h2>Flight events</h2><div id="events" aria-live="polite"></div>
 <section class="controls" style="margin-top:12px"><button id="export" class="full">↓ Export flight CSV</button><button id="camera" class="full">⌾ Toggle follow camera</button></section>
