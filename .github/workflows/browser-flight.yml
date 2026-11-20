@@ -20,6 +20,8 @@ jobs:
           cd public
           npm install
           npx playwright install --with-deps chromium
+      - name: Verify mission clearance regression
+        run: cd public && node tests/mission-safety.mjs
       - name: Validate Vite production bundle
         run: cd public && npm run build
       - name: Start site and exercise flight controls
