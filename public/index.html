@@ -18,6 +18,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <h1>Flight operations</h1>
 <label class="field" for="airframe">Airframe and calibrated inertia</label><select id="airframe"><option value="heavy">Skydio X2 CAD · 1.325 kg</option><option value="crazyflie">Crazyflie 2 original CAD · 27 g</option></select>
 <p>Switching airframes recompiles the MuJoCo model and resets the mission.</p>
+<p id="cadState">CAD mesh loading after physics initialization…</p>
 <section class="controls">
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
