@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
 import { PlanarSLAM, simulateScan, yawOfQuaternion } from '../src/slam.js';
+import {withNativeLidar,nativeScan,RAY_COUNT} from '../src/mujoco_lidar.js';
+const instrumented=withNativeLidar('<mujoco><worldbody><body name="quad"></body></worldbody></mujoco>');
+assert.equal((instrumented.match(/<rangefinder /g)||[]).length,RAY_COUNT);
+const raw=new Float64Array(RAY_COUNT).fill(-1);raw[0]=2.5;
+const native=nativeScan({sensordata:raw});
+assert.equal(native.valid,1);
+assert.equal(native.ranges[0],2.5);
+assert.equal(native.ranges[1],18);
 const scan=simulateScan([0,0,3,0],{beams:64,maxRange:18,seed:17});
 assert.equal(scan.ranges.length,64);
 assert.ok(scan.valid>0,'Survey altitude should see physical obstacles');
