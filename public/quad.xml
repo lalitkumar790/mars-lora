@@ -1,0 +1,28 @@
+<mujoco model="mars-lora-browser-quad">
+ <compiler angle="radian" autolimits="true"/>
+ <option timestep="0.004" gravity="0 0 -9.81" integrator="RK4"/>
+ <worldbody>
+  <geom name="ground" type="plane" size="60 60 0.1" rgba=".1 .17 .22 1" friction="1 .01 .001"/>
+  <light pos="0 0 20" directional="true" dir="0 0 -1"/>
+  <body name="quad" pos="0 0 .5">
+   <freejoint name="free"/>
+   <inertial pos="0 0 0" mass="1.2" diaginertia=".019 .019 .035"/>
+   <geom type="box" size=".11 .08 .035" mass="0" rgba=".1 .62 .9 1"/>
+   <geom type="capsule" fromto="-.21 -.21 0 .21 .21 0" size=".013" mass="0"/>
+   <geom type="capsule" fromto="-.21 .21 0 .21 -.21 0" size=".013" mass="0"/>
+   <site name="rotor1" pos=".21 .21 0" size=".025"/>
+   <site name="rotor2" pos=".21 -.21 0" size=".025"/>
+   <site name="rotor3" pos="-.21 -.21 0" size=".025"/>
+   <site name="rotor4" pos="-.21 .21 0" size=".025"/>
+  </body>
+  <geom name="inspection_building_1" type="box" pos="5 4 1.4" size="1.1 1.4 1.4" rgba=".31 .4 .51 1"/>
+  <geom name="inspection_building_2" type="box" pos="-5 5 1.9" size="1.25 1.1 1.9" rgba=".35 .38 .47 1"/>
+  <geom name="inspection_building_3" type="box" pos="5 -4 1.6" size="1.4 1.0 1.6" rgba=".32 .39 .50 1"/>
+ </worldbody>
+ <actuator>
+  <motor name="thrust1" site="rotor1" gear="0 0 1 0 0 0" ctrllimited="true" ctrlrange="0 15"/>
+  <motor name="thrust2" site="rotor2" gear="0 0 1 0 0 0" ctrllimited="true" ctrlrange="0 15"/>
+  <motor name="thrust3" site="rotor3" gear="0 0 1 0 0 0" ctrllimited="true" ctrlrange="0 15"/>
+  <motor name="thrust4" site="rotor4" gear="0 0 1 0 0 0" ctrllimited="true" ctrlrange="0 15"/>
+ </actuator>
+</mujoco>
