@@ -33,6 +33,18 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button data-move="x-">← Left</button><button data-move="x+">Right →</button>
 <button data-move="y-">↓ Backward</button><button data-move="z-">－ Altitude</button>
 </section>
+<h2>GPS-denied mapping</h2>
+<label class="field" for="navSource">Navigation position source</label>
+<select id="navSource"><option value="truth">Physics truth (reference)</option><option value="slam">GPS-denied odometry + scan matching</option></select>
+<p>GPS-denied mode uses onboard-style odometry and an online estimated pose for navigation. Ground truth is shown only to evaluate drift and run a simulation-only safety supervisor.</p>
+<section class="controls"><button id="resetSlam" class="full">↺ Reset occupancy map</button></section>
+<div class="met" style="margin-top:12px">
+<div class="metric"><div class="k">Scan beams / returns</div><div class="v" id="scanBeams">—</div></div>
+<div class="metric"><div class="k">Mapping scans</div><div class="v" id="slamScans">0</div></div>
+<div class="metric"><div class="k">Localization drift*</div><div class="v" id="slamError">—</div></div>
+<div class="metric"><div class="k">Scan corrections</div><div class="v" id="slamCorrections">0</div></div>
+</div>
+<p>*Drift is calculated using simulator truth for research evaluation only and never supplied to the SLAM pose estimator.</p>
 <h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam with MuJoCo collision geometry. Mission planner first climbs to a 7 m transit corridor above the tallest structure, then follows elevated waypoints and returns to base.</p>
 <label class="field" for="wind">Horizontal wind disturbance</label>
 <div class="rowfield"><input id="wind" type="range" min="0" max="3" step=".25" value=".25"><span id="windval" class="value">0.25 N</span></div>
@@ -82,6 +94,9 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <p id="rfParams"></p>
 <h2>Research evaluation parameters</h2>
 <p><b>Link:</b> delivery ratio, critical deadline ratio, AoI, estimated RSSI / SF,  packet airtime and queue. <b>Flight:</b> trajectory error, safety clearance, contacts, mission time, thrust and disturbance response. These live exploratory values are distinct from GitHub's seeded experiments and are not publication-grade calibrated RF measurements.</p>
+<h2>Occupancy SLAM map</h2>
+<canvas id="slamMap" width="440" height="320" aria-label="Incrementally generated occupancy map using simulated LiDAR returns" style="width:100%;height:215px;border:1px solid #263e55;border-radius:9px"></canvas>
+<p id="slamStatus">Waiting for first scan. At 7 m, a horizontal 2D LiDAR may see few obstacles below its scan plane; this limits GPS-denied localization.</p>
 <h2>Mission planner — top-down processing</h2>
 <canvas id="missionMap" width="440" height="310" aria-label="Live top-down drone route and obstacle map" style="width:100%;height:205px;border:1px solid #263e55;border-radius:9px"></canvas>
 <p>Amber: safe transit corridor · Blue: vehicle · Red: solid collision geometry · Cyan: radio path (orange when obstructed).</p>
