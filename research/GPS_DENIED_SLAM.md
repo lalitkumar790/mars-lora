@@ -52,6 +52,19 @@ Official references:
 - https://index.ros.org/p/slam_toolbox/
 - https://mujoco.readthedocs.io/en/stable/XMLreference.html (rangefinder sensors)
 
+## Quantifying GPS-denied localization drift
+
+Export **both** files from the same browser session: the native LiDAR/odometry JSONL and the flight CSV with simulator ground truth. Run:
+
+```bash
+python analysis/evaluate_slam.py \
+  --slam /path/to/mars-lora-lidar-odom.jsonl \
+  --flight /path/to/mars-lora-mujoco-flight.csv \
+  --output results/slam-eval/metrics.json
+```
+
+This calculates dead-reckoning and locally scan-corrected **absolute trajectory error (ATE) RMSE and P95**, 10-second **relative pose error (RPE)**, and LiDAR observability. It does not invent results: the metrics file requires actual exported flight logs. The offline truth input is *only* for scoring. Use multiple separate missions and environments to report uncertainty intervals.
+
 ## Next research experiments
 
 ### Validation gate A — Localization
