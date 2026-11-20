@@ -25,17 +25,21 @@ jobs:
           python-version: '3.11'
       - name: Install MuJoCo
         run: python -m pip install mujoco==3.3.2
+      - name: Install figure generator
+        run: python -m pip install matplotlib==3.10.3
       - name: Test geometric and radio A* planner
         run: python -m unittest tests.test_rf_astar -v
       - name: Execute collision-aware shortest vs RF-aware UAV missions
         run: python -m experiments.rf_navigation --seeds 20 --output results/rf_navigation
       - name: Analyze matched-seed route effects
         run: python analysis/paired_rf_navigation.py --trials results/rf_navigation/trials.csv --output results/rf_navigation/paired_effects.csv
+      - name: Generate paper-ready empirical route and delivery figures
+        run: python -m analysis.plot_rf_navigation --results results/rf_navigation --figures paper/figures
       - name: Commit experiment artifacts only to GitHub
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add results/rf_navigation
+          git add results/rf_navigation paper/figures/rf_aware_routes.pdf paper/figures/rf_aware_routes.png paper/figures/rf_aware_tradeoff.pdf paper/figures/rf_aware_tradeoff.png
           if ! git diff --cached --quiet; then
             git commit -m 'results: MuJoCo-executed A* RF-aware navigation with paired LoRa measurements [skip ci]'
             for attempt in 1 2 3 4 5; do
@@ -50,4 +54,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: executed-rf-aware-3d-navigation
-          path: results/rf_navigation/*
+          path: |
+            results/rf_navigation/*
+            paper/figures/rf_aware_routes.pdf
+            paper/figures/rf_aware_tradeoff.pdf
