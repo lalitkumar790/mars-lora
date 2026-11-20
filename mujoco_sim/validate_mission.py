@@ -80,9 +80,9 @@ def run(airframe,duration=240,wind=.25,out=None):
                 demand=clamp(force/4+mx*y/(4*a*a)-my*x/(4*a*a),0,max_thrust)
                 rotor[i]+=(1-math.exp(-.02/.06))*(demand-rotor[i])
                 data.ctrl[i]=clamp(rotor[i],0,max_thrust)
-            data.xfrc_applied[6]=wind*(mass/1.2)*math.sin(t*.6)-.18*mass*v[0]
-            data.xfrc_applied[7]=wind*(mass/1.2)*math.cos(t*.43)-.18*mass*v[1]
-            data.xfrc_applied[8]=-.12*mass*v[2]
+            data.xfrc_applied[1,0]=wind*(mass/1.2)*math.sin(t*.6)-.18*mass*v[0]
+            data.xfrc_applied[1,1]=wind*(mass/1.2)*math.cos(t*.43)-.18*mass*v[1]
+            data.xfrc_applied[1,2]=-.12*mass*v[2]
             tilt=math.degrees(math.hypot(roll,pitch))
             max_tilt=max(max_tilt,tilt)
         mujoco.mj_step(model,data)
