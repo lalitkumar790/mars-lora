@@ -1,0 +1,41 @@
+name: Factorial LoRa ablation
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mars_lora/ablation.py'
+      - 'experiments/ablation.py'
+      - 'tests/test_ablation.py'
+      - '.github/workflows/ablation.yml'
+concurrency:
+  group: mars-lora-ablation
+  cancel-in-progress: true
+permissions:
+  contents: write
+jobs:
+  factorial:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -v
+      - run: python -m experiments.ablation --seeds 20 --output results/ablation
+      - name: Save generated simulation data to GitHub (not Vercel)
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add results/ablation
+          if ! git diff --cached --quiet; then
+            git commit -m 'results: reproducible 2x2x2 ablation [skip ci]'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: controlled-lora-ablation
+          path: results/ablation/*
