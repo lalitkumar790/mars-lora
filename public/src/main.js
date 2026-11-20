@@ -1,5 +1,6 @@
 import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
+import { LiveLink } from './link.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -90,6 +91,7 @@ for(let i=0;i<waypointPositions.length;i++){
 let airframe='heavy', mjMass=1.2, arm=.21, momentScale=1, modelThrustMax=15;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
+const radio=new LiveLink();let lastRadio=-1;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
 function report(message) {
@@ -168,7 +170,12 @@ function updateUI(){
  $('thrust').textContent=Array.from(data.ctrl).reduce((s,n)=>s+n,0).toFixed(1)+' N';
  $('distance').textContent=dist.toFixed(1)+' m';
  $('rssi').textContent=rssi.toFixed(1)+' dBm';
- $('linklabel').textContent='Estimated margin '+(rssi-sens).toFixed(1)+' dB at SF'+sf+' (path-loss-only illustration; no packet traffic).';
+ const rs=radio.summary(t);
+ $('radioPdr').textContent=rs.pdr.toFixed(1)+'%';
+ $('radioAoi').textContent=rs.aoi.toFixed(1)+' s';
+ $('radioAlerts').textContent=rs.alerts;
+ $('radioQueue').textContent=String(rs.queue);
+ $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
 }
@@ -189,6 +196,10 @@ function frame(now){
    if(Math.floor(data.time/.02)!==Math.floor((data.time+simStep)/.02))controller();
    mujoco.mj_step(model,data);
    accumulator-=simStep;steps++;
+  }
+  if(data.time-lastRadio>=.5){
+    lastRadio=data.time;
+    radio.tick(data.time,[data.qpos[0],data.qpos[1],data.qpos[2]],$('radioMode').value,2);
   }
   if(data.time-lastLog>.1){lastLog=data.time;appendLog();}
   if(data.time-lastTrace>.15){
@@ -226,7 +237,7 @@ on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1
 on('mission',()=>{if(!ready)return;mission=true;goTo(0);setMode('Waypoint mission');});
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -241,6 +252,8 @@ window.addEventListener('keydown',event=>{
 for(const [id,fn] of [['wind',v=>wind=v],['speed',v=>missionSpeed=v]]){
  $(id).addEventListener('input',e=>{fn(Number(e.target.value));$(id+'val').textContent=Number(e.target.value).toFixed(2)+(id==='wind'?' N':' m/s');});
 }
+on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-second critical radio alert');});
+$('radioMode').addEventListener('change',()=>{if(!ready)return;radio.reset();lastRadio=-1;report('Reset radio emulator: '+$('radioMode').selectedOptions[0].textContent);});
 on('export',()=>{
  if(!flightLog.length){report('No flight trace to export');return;}
  const header='time_s,x_m,y_m,z_m,qw,qx,qy,qz,vx_mps,vy_mps,vz_mps,rotor1_N,rotor2_N,rotor3_N,rotor4_N';
@@ -273,7 +286,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;
- mission=false;flightLog=[];tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;flightLog=[];radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
