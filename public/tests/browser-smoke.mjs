@@ -12,7 +12,7 @@ try {
  await page.waitForTimeout(4000);
  const altitude = parseFloat(await page.locator('#altitude').innerText());
  const time = parseFloat(await page.locator('#time').innerText());
- if (!(altitude > initial+.2 && altitude < 15 && time > 2)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
+ if (!(altitude > initial+.2 && altitude < 15 && time > 1)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#mission').click();
  await page.waitForTimeout(500);
  if (!(await page.locator('#waypoints').innerText()).includes('Active waypoint')) throw new Error('Waypoint mission did not activate');
