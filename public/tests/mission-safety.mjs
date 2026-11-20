@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import {missionWaypoints,plannedPathClearance,transitAltitude,maxObstacleHeight,obstacleClearance} from '../src/mission.js';
+import {missionWaypoints,mappingWaypoints,plannedPathClearance,transitAltitude,maxObstacleHeight,obstacleClearance} from '../src/mission.js';
 assert.ok(transitAltitude>maxObstacleHeight+.6);
 assert.ok(missionWaypoints.length>=6);
 const safe=plannedPathClearance(missionWaypoints,.32);
 assert.ok(safe>.5,'New mission clearance too low: '+safe);
 const legacy=[[2,0,3.5],[2,8,3.5],[-7,8,4],[-7,-7,4],[0,0,2.5]];
+const mappingClearance=plannedPathClearance(mappingWaypoints,.32);
+assert.ok(mappingClearance>.5,'Landmark survey route too near obstacles: '+mappingClearance);
 const old=plannedPathClearance(legacy,.32);
 assert.ok(old<0,'Legacy mission should intersect industrial site: '+old);
 assert.ok(obstacleClearance(-3,-4,.6,.32).overlap);
-console.log('PASS: former route collision reproduced, new elevated route swept clearance '+safe.toFixed(2)+' m, transit '+transitAltitude+'m');
+console.log('PASS: former route collision reproduced, new elevated route swept clearance '+safe.toFixed(2)+' m, transit '+transitAltitude+'m; mapping corridor '+mappingClearance.toFixed(2)+'m');
