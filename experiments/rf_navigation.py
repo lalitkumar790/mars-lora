@@ -43,8 +43,6 @@ def execute(out,airframes=("heavy","crazyflie"),seeds=20):
             trace=load_trajectory(trajectory)
             for sigma in (4.,8.):
                 for seed in range(seeds):
-                    for method in (("fixed",) if name=="shortest" else ()):
-                        pass
                     policies=("fixed","priority-adaptive") if name=="shortest" else ("priority-adaptive",)
                     for policy in policies:
                         x=trial(trace,policy,seed,GCS,sigma)
@@ -81,7 +79,7 @@ def execute(out,airframes=("heavy","crazyflie"),seeds=20):
     (root/"manifest.json").write_text(json.dumps({
         "experiment":"Map-known 3D RF-aware A* executed in MuJoCo, then matched-seed LoRa replay",
         "n_trials":len(trials),"seeds_per_condition":seeds,
-        "goal_xyz_m":(-24,24,4),"start_xyz_m":(0,0,4),
+        "goal_xyz_m":(-30,24,4),"start_xyz_m":(0,0,4),
         "receiver_xyz_m":GCS,
         "conditions":["S0_shortest_fixed","S1_shortest_adaptive","R2_RF_route_adaptive"],
         "limitations":[
