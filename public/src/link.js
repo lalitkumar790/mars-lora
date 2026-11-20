@@ -3,8 +3,9 @@
  * SF coordination assumed ideal; no MAC regulatory duty-cycle enforcement.
  */
 export class LiveLink {
-  constructor(seed=2026) { this.seed=seed;this.reset(); }
+  constructor(seed=2026) { this.initialSeed=seed;this.seed=seed;this.reset(); }
   reset() {
+    this.seed=this.initialSeed;
     this.sf=9;this.next=0;this.busy=0;this.queue=[];this.seq=0;
     this.generated=0;this.received=0;this.onTime=0;this.alerts=0;this.alertOnTime=0;
     this.latestStatus=0;this.lastRSSI=null;this.lastSNR=null;
@@ -34,7 +35,8 @@ export class LiveLink {
     this.generated++;this.alerts++;
     this.queue.unshift({created:t,deadline:t+3,alert:true,seq:++this.seq,bytes:12});
   }
-  tick(t,xyz,mode='fixed',interval=2) {
+  tick(t,xyz,mode='fixed',interval=2,fixedSF=9) {
+    if(mode!=='adaptive')this.sf=fixedSF;
     if(t+1e-8>=this.next) {
       this.generated++;
       this.queue.push({created:t,deadline:t+8,alert:false,seq:++this.seq,bytes:20});
