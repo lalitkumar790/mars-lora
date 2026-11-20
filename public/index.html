@@ -22,7 +22,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
 <label class="field full" for="missionType" style="margin:0">Flight mission</label>
-<select id="missionType" class="full"><option value="inspection">High-altitude inspection (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option></select>
+<select id="missionType" class="full"><option value="inspection">High-altitude inspection (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest safe urban route</option><option value="astar_rf">3D A*: LoRa-aware safe urban route</option></select>
 <button id="mission" class="full">▶ Start selected mission</button>
 <button id="pause">Ⅱ Pause</button>
 <button id="reset" class="danger">↺ Reset</button>
@@ -109,6 +109,15 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <h2>Mission planner — top-down processing</h2>
 <canvas id="missionMap" width="440" height="310" aria-label="Live top-down drone route and obstacle map" style="width:100%;height:205px;border:1px solid #263e55;border-radius:9px"></canvas>
 <p>Amber: safe transit corridor · Blue: vehicle · Red: solid collision geometry · Cyan: radio path (orange when obstructed).</p>
+<h2>Urban 3D route planner</h2>
+<p id="plannerStats">Choose an A* city mission to calculate a new route between (0,0,4) and (-30,24,4). The map and radio geometry are known to the planner; this is not GPS-less map discovery.</p>
+<div class="met">
+<div class="metric"><div class="k">Planned route length</div><div class="v" id="planDistance">—</div></div>
+<div class="metric"><div class="k">Minimum static clearance</div><div class="v" id="planClearance">—</div></div>
+<div class="metric"><div class="k">RF prediction at waypoint</div><div class="v" id="planRF">—</div></div>
+<div class="metric"><div class="k">Current cross-track error</div><div class="v" id="pathError">—</div></div>
+</div>
+<p>The RF-aware planner changes the commanded 3D trajectory, but LoRa reception is still synthetic. It does not use the hidden random-fading realization or future packet outcomes.</p>
 <h2>Waypoints</h2><p id="waypoints">No active mission.</p>
 <h2>RF link processing</h2>
 <canvas id="rfChart" width="450" height="140" aria-label="LoRa RSSI and age of information history" style="width:100%;height:110px;border:1px solid #263e55;border-radius:8px"></canvas>
