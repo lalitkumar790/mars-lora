@@ -16,6 +16,8 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <div class="logo">◉ MARS / FLIGHT LAB</div>
 <div class="subtitle">MuJoCo WebAssembly · quadrotor dynamics</div>
 <h1>Flight operations</h1>
+<label class="field" for="airframe">Airframe and calibrated inertia</label><select id="airframe"><option value="heavy">Inspection quad · 1.2 kg</option><option value="crazyflie">Crazyflie 2 derived · 27 g</option></select>
+<p>Switching airframes recompiles the MuJoCo model and resets the mission.</p>
 <section class="controls">
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
@@ -31,7 +33,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button data-move="x-">← Left</button><button data-move="x+">Right →</button>
 <button data-move="y-">↓ Backward</button><button data-move="z-">－ Altitude</button>
 </section>
-<h2>Environment</h2>
+<h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam. These objects have MuJoCo collision geometry.</p>
 <label class="field" for="wind">Horizontal wind disturbance</label>
 <div class="rowfield"><input id="wind" type="range" min="0" max="3" step=".25" value=".25"><span id="windval" class="value">0.25 N</span></div>
 <label class="field" for="speed">Mission target speed</label>
