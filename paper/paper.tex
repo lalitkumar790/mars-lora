@@ -5,7 +5,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-LoRa enables long-range low-rate robotic telemetry, yet packet reception is not equivalent to fresh status or on-time safety alerts. We specify MARS-LoRa, a seeded simulation comparing fixed spreading factor, link-reactive adaptation, priority-aware scheduling, and a conservative mission slowdown policy. We evaluate application delivery, alert deadline satisfaction, age of information, outage duration, and transmission-energy proxy under mobility and shadowing. This version uses a kinematic route and simplified link reception, not validated physical flight or field radio. Quantitative results are added only when reproduced from executed experiment logs.
+LoRa enables long-range low-rate robotic telemetry, yet packet reception is not equivalent to fresh status or on-time safety alerts. We specify MARS-LoRa, a seeded simulation comparing fixed spreading factor, link-reactive adaptation, priority-aware scheduling, and a conservative mission slowdown policy. We evaluate application delivery, alert deadline satisfaction, age of information, outage duration, and transmission-energy proxy under mobility and shadowing. This version uses a kinematic route and simplified link reception, not validated physical flight or field radio. Results from 720 seeded abstract-model trials are reported descriptively; field validation remains outstanding.
 \end{abstract}
 \begin{IEEEkeywords}LoRa, UAV, robotics, age of information, timely telemetry\end{IEEEkeywords}
 \section{Introduction}
@@ -36,7 +36,17 @@ B1 fixes SF9 and transmits routine telemetry every 2 s. B2 selects the lowest SF
 \section{Reproducible Experiments}
 Four policies, three speeds, three shadow intensities, and 20 trial seeds yield 720 planned trials. The simulator exports trial-level and grouped CSVs. Application delivery fraction is received/generated. Critical deadline satisfaction is timely critical deliveries divided by generated critical alerts. For newest received creation time $u(t)$, freshness age is $\Delta(t)=t-u(t)$. An outage counts when more than 15 s pass without delivery. Additional outcomes are mean and trial-level 95th-percentile AoI, airtime, estimated TX energy, and mission duration. Pairing the RNG seeds does not enforce identical spatial fading across differently paced missions; a spatial common-random field is future work.
 \section{Results and Discussion}
-\textbf{Results status: pending executed and verified trials.} We intentionally avoid numerical claims before checking the generated logs. Figures are inserted only if produced by the repository plotting script from simulation CSVs.
+All 720 seeded event-based simulation trials completed in the GitHub Actions workflow. The tabulated values are measured outputs of the \emph{synthetic simulator}, not real radio measurements. For the 2 m/s, 4 dB-shadowing scenario, Table~\ref{tab:example} shows descriptive mean values across 20 trials. No statistical significance is inferred.
+\begin{table}[t]\centering\caption{Synthetic model trial means: 2 m/s, $\sigma=4$ dB; $n=20$ seeds.}\label{tab:example}
+\begin{tabular}{lrrr}\toprule
+Policy & App. delivery & Alert on time & AoI P95 (s)\\\midrule
+Fixed SF9 & 0.585 & 0.507 & 57.3\\
+Reactive SF & 0.675 & 0.614 & 49.0\\
+Priority-aware & 0.629 & 0.643 & 77.8\\
+MARS prototype & 0.673 & 0.600 & 66.3\\
+\bottomrule\end{tabular}\end{table}
+The priority-aware baseline has the greatest mean alert deadline satisfaction in this illustrative scenario (0.643), not MARS (0.600). Reactive SF produces the highest mean application delivery (0.675), marginally above MARS (0.673). MARS also extends mission time from 360 to 450 s by design. These differences cannot isolate SF adjustment, packet interval, or slowdown effects, because policy settings vary simultaneously. Moreover, a longer run generates more alert events. The initial evidence does \emph{not} justify declaring MARS superior.
+Figures are generated directly from the saved summary CSV and show speed-related patterns at 4 dB shadowing. More rigorous inference requires per-seed paired comparisons, uncertainty intervals, proper event-time AoI integration, and controlled ablations.
 \begin{figure}[t]\centering
 \IfFileExists{figures/deadline_satisfaction.pdf}{\includegraphics[width=\linewidth]{figures/deadline_satisfaction.pdf}}{\fbox{Deadline plot pending verified run}}
 \caption{Critical-alert deadline satisfaction by speed at 4 dB shadowing.}\end{figure}
