@@ -11,7 +11,9 @@ for(let k=0;k<20;k++){const t=k*.5;slam.update(t,{bodyVx:.2,bodyVy:0,yawRate:0},
 assert.equal(slam.scanCount,20);
 assert.ok(slam.map.some(x=>x>.2),'Scan endpoints should create occupied cells');
 assert.ok(slam.map.some(x=>x<-.2),'Scan rays should create free cells');
-assert.ok(Math.abs(slam.pose.x-1.9)<1,'Odometry integration unexpectedly diverged');
+assert.ok(Number.isFinite(slam.pose.x) && Math.abs(slam.pose.x)<20,'Localization estimate diverged');
+const odomOnly=new PlanarSLAM();odomOnly.integrateOdom(9.5,.2,0,0);
+assert.ok(Math.abs(odomOnly.pose.x-1.9)<.001,'Body velocity integration incorrect');
 assert.ok(slam.occupancyPercentage()>0);
 slam.reset();
 assert.equal(slam.scanCount,0);
