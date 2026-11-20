@@ -3,10 +3,13 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore:
-      - 'results/**'
-      - 'paper/figures/**'
-      - 'paper/paper.pdf'
+    paths:
+      - 'mars_lora/**'
+      - 'experiments/**'
+      - 'tests/**'
+      - 'analysis/**'
+      - 'paper/paper.tex'
+      - '.github/workflows/research.yml'
 concurrency:
   group: mars-lora-publish-main
   cancel-in-progress: true
