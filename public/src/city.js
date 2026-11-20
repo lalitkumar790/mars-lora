@@ -32,54 +32,49 @@ export function withCity(xml,enabled=true){
  return xml.replace('</worldbody>',mjcf+'\n</worldbody>');
 }
 export function addCityToScene(scene){
- const group=new THREE.Group();
- const windowTransforms=[];
- const windowGeometry=new THREE.PlaneGeometry(.86,.94);
- const materials=[
-  new THREE.MeshStandardMaterial({color:0x46576a,roughness:.82}),
-  new THREE.MeshStandardMaterial({color:0x536a78,roughness:.75}),
-  new THREE.MeshStandardMaterial({color:0x7b726e,roughness:.8}),
-  new THREE.MeshStandardMaterial({color:0x6b8991,roughness:.74})
- ];
- for(const b of CITY_BUILDINGS){
-  const index=Math.floor(b.kind*materials.length);
-  const mesh=new THREE.Mesh(new THREE.BoxGeometry(2*b.hx,2*b.hy,2*b.hz),materials[Math.min(index,3)]);
-  mesh.position.set(b.x,b.y,b.z);mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
-  const roof=new THREE.Mesh(new THREE.BoxGeometry(2*b.hx+.2,2*b.hy+.2,.15),new THREE.MeshStandardMaterial({color:0x263949,roughness:.85}));
-  roof.position.set(b.x,b.y,b.z+b.hz+.07);group.add(roof);
+ const group=new THREE.Group(),matrix=new THREE.Object3D();
+ const buildingMaterial=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8});
+ const buildings=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),buildingMaterial,CITY_BUILDINGS.length);
+ const roofs=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0x263949}),CITY_BUILDINGS.length);
+ const windowMatrices=[];
+ for(let i=0;i<CITY_BUILDINGS.length;i++){
+  const b=CITY_BUILDINGS[i];
+  matrix.position.set(b.x,b.y,b.z);matrix.scale.set(2*b.hx,2*b.hy,2*b.hz);matrix.rotation.set(0,0,0);matrix.updateMatrix();
+  buildings.setMatrixAt(i,matrix.matrix);
+  buildings.setColorAt(i,new THREE.Color().setHSL(.57+b.kind*.05,.13,.3+b.kind*.16));
+  matrix.position.set(b.x,b.y,b.z+b.hz+.07);matrix.scale.set(2*b.hx+.2,2*b.hy+.2,.15);matrix.updateMatrix();roofs.setMatrixAt(i,matrix.matrix);
   const floors=Math.min(12,Math.floor((2*b.hz)/2.5));
   for(let level=1;level<=floors;level++){
-   const z=level*2.4;
-   for(const side of [-1,1])for(let slot=-1;slot<=1;slot++){
-    windowTransforms.push([b.x+slot*(b.hx*.68),b.y+side*(b.hy+.006),z,side]);
-   }
+    for(const side of [-1,1])for(let slot=-1;slot<=1;slot++)
+      windowMatrices.push([b.x+slot*b.hx*.68,b.y+side*(b.hy+.006),level*2.4,side]);
   }
  }
- const winMat=new THREE.MeshBasicMaterial({color:0x93b9c6,transparent:true,opacity:.28,side:THREE.DoubleSide});
- const windows=new THREE.InstancedMesh(windowGeometry,winMat,windowTransforms.length);
- const obj=new THREE.Object3D();
- for(let i=0;i<windowTransforms.length;i++){
-   const [x,y,z,side]=windowTransforms[i];
-   obj.position.set(x,y,z);obj.rotation.set(side===1?Math.PI/2:-Math.PI/2,0,0);
-   obj.updateMatrix();windows.setMatrixAt(i,obj.matrix);
+ buildings.instanceMatrix.needsUpdate=true;
+ if(buildings.instanceColor)buildings.instanceColor.needsUpdate=true;
+ buildings.castShadow=false;buildings.receiveShadow=true;
+ roofs.instanceMatrix.needsUpdate=true;group.add(buildings,roofs);
+ const win=new THREE.InstancedMesh(new THREE.PlaneGeometry(.86,.94),
+   new THREE.MeshBasicMaterial({color:0x93b9c6,transparent:true,opacity:.35,side:THREE.DoubleSide}),windowMatrices.length);
+ windowMatrices.forEach(([x,y,z,side],i)=>{
+  matrix.position.set(x,y,z);matrix.rotation.set(side===1?Math.PI/2:-Math.PI/2,0,0);matrix.scale.set(1,1,1);matrix.updateMatrix();win.setMatrixAt(i,matrix.matrix);
+ });
+ win.instanceMatrix.needsUpdate=true;group.add(win);
+ const roads=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),
+   new THREE.MeshStandardMaterial({color:0x1c3039,roughness:.98}),18);
+ const stripesData=[];
+ for(let coord=-4;coord<=4;coord++)for(const axis of ['x','y']){
+   const i=(coord+4)*2+(axis==='x'?0:1);
+   matrix.position.set(axis==='x'?0:coord*12.2+6.1,axis==='x'?coord*12.2+6.1:0,.012);
+   matrix.rotation.set(0,0,0);matrix.scale.set(axis==='x'?116:5,axis==='x'?5:116,1);matrix.updateMatrix();
+   roads.setMatrixAt(i,matrix.matrix);
+   for(let d=-52;d<=52;d+=5)stripesData.push([axis,d,coord*12.2+6.1]);
  }
- windows.instanceMatrix.needsUpdate=true;group.add(windows);
- // Streets are visual surfaces only; MuJoCo has a continuous ground plane.
- const roadMat=new THREE.MeshStandardMaterial({color:0x1c3039,roughness:.98});
- const stripeMat=new THREE.MeshBasicMaterial({color:0xa6aa91});
- for(let coord=-4;coord<=4;coord++){
-  for(const axis of ['x','y']){
-   const road=new THREE.Mesh(new THREE.PlaneGeometry(axis==='x'?116:5,axis==='x'?5:116),roadMat);
-   road.position[axis==='x'?'y':'x']=coord*12.2+6.1;road.position.z=.012;
-   group.add(road);
-   for(let d=-52;d<=52;d+=5){
-    const stripe=new THREE.Mesh(new THREE.PlaneGeometry(axis==='x'?2.1:.1,axis==='x'?.1:2.1),stripeMat);
-    if(axis==='x'){stripe.position.set(d,coord*12.2+6.1,.016);}
-    else stripe.position.set(coord*12.2+6.1,d,.016);
-    group.add(stripe);
-   }
-  }
- }
- scene.add(group);
- return group;
+ roads.instanceMatrix.needsUpdate=true;group.add(roads);
+ const stripes=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({color:0xa6aa91}),stripesData.length);
+ stripesData.forEach(([axis,d,road],i)=>{
+  matrix.position.set(axis==='x'?d:road,axis==='x'?road:d,.016);
+  matrix.rotation.set(0,0,0);matrix.scale.set(axis==='x'?2.1:.1,axis==='x'?.1:2.1,1);matrix.updateMatrix();stripes.setMatrixAt(i,matrix.matrix);
+ });
+ stripes.instanceMatrix.needsUpdate=true;group.add(stripes);
+ scene.add(group);return group;
 }
