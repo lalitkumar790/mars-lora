@@ -3,7 +3,7 @@
 **Status:** engineering implementation and validation in progress. This document defines future work, not completed research findings.
 
 ## Root cause and fix: collision during mission
-The original waypoint sequence ended with a diagonal from [-7,-7,4] to [0,0,2.5]. This passes through the storage-container XY footprint x∈[-5,-1], y∈[-4.7,-3.3]. The previous guidance law aimed directly at point waypoints and did not query obstacle collisions or clearance. Near objects at mission altitude 3.5–4 m it also allowed risky lateral commands without a dedicated climb phase.
+The original segment from [2,8,3.5] to [-7,8,4] cuts across the antenna tower at (1,8), whose physical top reaches 5 m; the planned vehicle altitude on that segment is only about 3.5–4 m. This is a geometric collision risk. The later diagonal return overflies the container XY footprint but is above the container roof (so crossing its XY footprint is not itself a collision). The previous controller aimed directly at waypoints without collision checking and had no dedicated climb-before-traverse phase.
 
 Implemented now:
 - Conservative high-altitude flight corridor: first climb to **7 m**, above the highest 5.68 m overhead beam plus clearance, traverse the survey route, return to base above obstacles, then descend.
