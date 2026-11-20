@@ -539,7 +539,10 @@ async function initialize(){
   $('help').hidden=true;
   report('MuJoCo WebAssembly engine initialized, model compiled ('+model.nbody+' bodies).');
   report('Use Take off, waypoint mission, or manual controls.');
-  loadAirframeCAD(drone,airframe,rotors,report).catch(e=>report('CAD load fallback: '+e.message));
+  $('cadState').textContent='Loading original CAD mesh…';
+  loadAirframeCAD(drone,airframe,rotors,report)
+    .then(()=>$('cadState').textContent='CAD READY: original '+(airframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' visual mesh')
+    .catch(e=>{$('cadState').textContent='CAD LOAD FAILED: '+e.message;report('CAD load fallback: '+e.message);});
  }catch(error){
   console.error(error);status('PHYSICS FAILED','#ff6f81');
   $('help').hidden=false;$('help').textContent='Unable to load MuJoCo WebAssembly: '+error.message+'. Check browser WebGL/WebAssembly support and refresh.';
