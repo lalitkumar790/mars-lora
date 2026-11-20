@@ -1,19 +1,62 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MARS-LoRa · Reproducible UAV Communication Research</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="theme-color" content="#07101c">
+<title>MARS Flight Lab — MuJoCo UAV Simulator</title>
 <style>
-:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui;background:#070e1b;color:#e9f2ff}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 75% 0,#142847 0,transparent 45%),#070e1b}main{max-width:1100px;margin:auto;padding:55px 24px}a{color:#85cdfc}header{display:flex;justify-content:space-between;align-items:center;gap:20px}.brand{font-weight:800;letter-spacing:.18em;color:#7dd3fc}nav{display:flex;gap:18px;flex-wrap:wrap}h1{font-size:clamp(34px,5vw,61px);letter-spacing:-.04em;line-height:1.08;max-width:850px;margin:90px 0 18px}p{color:#a4b5c9;line-height:1.7;max-width:780px}.tag{display:inline-block;background:#18324a;border:1px solid #385c75;color:#9adeff;border-radius:22px;padding:7px 12px;font-size:12px}.hero{border-bottom:1px solid #263249;padding-bottom:55px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:18px;margin-top:25px}.panel{background:#0d1b2d;border:1px solid #2a3d58;border-radius:16px;padding:22px}img{width:100%;border-radius:8px;background:white;display:block;margin-top:18px}h2{font-size:25px;margin-top:65px}h3{font-size:17px}small{color:#8ba3bb}code{color:#a4efce}.warning{border-left:3px solid #fbbf24;padding:12px 18px;background:#2a251a;color:#fbe5b4;margin-top:26px}footer{border-top:1px solid #263249;padding-top:30px;margin-top:70px;color:#91a4bc}
-</style></head><body><main>
-<header><span class="brand">MARS · LoRa</span><nav><a href="#results">Results</a><a href="#model">Model</a><a href="https://github.com/lalitkumar790/mars-lora">GitHub ↗</a><a href="https://github.com/lalitkumar790/mars-lora/blob/main/paper/paper.tex">Paper source ↗</a></nav></header>
-<section class="hero"><h1>When a drone is connected, is its information still on time?</h1><p>A reproducible exploration of communication freshness, alert deadlines, and mission overhead for low-bandwidth LoRa links in autonomous UAV inspection.</p><span class="tag">Raw LoRa • kinematic simulator • deterministic seeded trials</span><div class="warning"><b>Model scope:</b> This is research simulation, not a field-tested radio or a physically validated autonomous drone. Generated graphics, when present, represent executed synthetic-model trials only.</div></section>
-<section id="results"><h2>Measured simulation outputs</h2><p id="runstatus">Checking for experiment data…</p><div class="grid" id="figures"></div></section>
-<section id="model"><h2>System and research methodology</h2><div class="grid"><article class="panel"><h3>01 / UAV inspection route</h3><p>Rectangular 900 m route; nominal 2, 5, 9 m/s. One ground station; geometric path loss and synthetic obstruction.</p></article><article class="panel"><h3>02 / Link simulator</h3><p>LoRa SF7–12, airtime, correlated fading, synthetic 10% external occupancy, constrained delivery queue and message deadlines.</p></article><article class="panel"><h3>03 / Four policies</h3><p>Fixed SF9, reactive SF, priority-aware traffic, and conservative MARS slowdown. Compare delivery, freshness, alert deadline reliability, and mission time.</p></article></div></section>
-<footer>Research prototype • All raw experiment generators and manuscript source are available on <a href="https://github.com/lalitkumar790/mars-lora">GitHub</a>. The static Vercel site presents results; it does not execute MuJoCo or ROS 2.</footer>
-</main><script>
-(async()=>{const status=document.getElementById('runstatus'),figs=document.getElementById('figures');
-try{const r=await fetch('/results.json');if(!r.ok)throw Error('No verified experiment dataset published');
-const d=await r.json();if(!Array.isArray(d.results)||!d.results.length)throw Error('Empty dataset');
-status.textContent=d.results.length+' scenario summaries loaded from actual simulator output. Interpretation is conditional on the abstract channel model.';
-for(const [file,title] of [['deadline_satisfaction','Critical alert deadlines'],['aoi_p95','Telemetry freshness'],['outage','Link outage fraction'],['tx_energy','Transmitter energy proxy']]){const card=document.createElement('article');card.className='panel';const h=document.createElement('h3');h.textContent=title;const img=document.createElement('img');img.loading='lazy';img.src='/'+file+'.png';img.alt=title+'; simulation data plot';card.append(h,img);figs.append(card);}
-}catch(e){status.textContent='No generated results published yet. Run the experiment workflow and verify the output before publishing plots.';}})();
-</script></body></html>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,sans-serif;color:#e9f1fa;background:#070e17}*{box-sizing:border-box}
+body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px solid #33485e;background:#16263a;color:#deebf9;border-radius:8px;padding:10px 12px;cursor:pointer;transition:.15s}button:hover{background:#24415b}button:disabled{opacity:.45;cursor:not-allowed}button.primary{background:#1173ac;border-color:#1f9ce9;color:white}button.danger{background:#503039;border-color:#a75160}.app{display:grid;grid-template-columns:292px minmax(0,1fr) 302px;height:100dvh}.rail{background:#0a1524;border-right:1px solid #20334c;padding:20px;overflow-y:auto}.right{border-left:1px solid #20334c;border-right:0}.logo{font-size:12px;font-weight:800;letter-spacing:.2em;color:#5ad4ea}.subtitle{color:#99b1c9;font-size:12px;margin-top:5px}h1{font-size:20px;letter-spacing:-.04em;margin:32px 0 12px}h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#83a5c1;margin:27px 0 10px}p,.small{font-size:12px;line-height:1.6;color:#9eb2c9}section.controls{display:grid;grid-template-columns:1fr 1fr;gap:8px}.full{grid-column:1 / -1}.sim{position:relative;overflow:hidden;background:#091625}#viewport{position:absolute;inset:0}#viewport canvas{display:block;width:100%;height:100%}.overlay{position:absolute;pointer-events:none;z-index:2}.top{top:18px;left:20px;right:20px;display:flex;justify-content:space-between;align-items:flex-start;gap:15px}.pill{background:#091928da;backdrop-filter:blur(8px);border:1px solid #38516b;border-radius:24px;padding:9px 13px;font-size:11px;letter-spacing:.08em}.pill strong{color:#5ce3a3}.bottom{bottom:18px;left:20px;right:20px;display:flex;justify-content:space-between;gap:12px}.bottom .pill{max-width:100%;line-height:1.6}.floathelp{position:absolute;left:20px;top:65px;max-width:450px;background:#0c1c2ddd;padding:12px;border-radius:9px;color:#b4c7dc;line-height:1.6;font-size:12px;border:1px solid #33435c;z-index:4}.floathelp[hidden]{display:none}.met{display:grid;grid-template-columns:1fr 1fr;gap:9px}.metric{border:1px solid #263e55;background:#0e2237;border-radius:10px;padding:13px 12px}.metric .k{font-size:10px;color:#90aabe;text-transform:uppercase;letter-spacing:.08em}.metric .v{font-size:19px;font-weight:650;margin-top:4px;font-variant-numeric:tabular-nums}label.field{display:block;font-size:12px;color:#d3e2f2;margin:16px 0 6px}.rowfield{display:flex;align-items:center;gap:10px}input[type=range]{width:100%;accent-color:#27b6eb}select{background:#101f33;color:#e7f4ff;border:1px solid #355069;padding:10px;border-radius:9px;width:100%}.value{min-width:45px;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:#6ad8ff}#events{height:180px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;background:#06101d;border:1px solid #20364c;border-radius:8px;padding:12px;font:11px/1.65 ui-monospace,monospace;color:#9ac3d2}.kbd{border:1px solid #33516a;border-radius:4px;padding:1px 5px;background:#152c44}.state-dot{width:7px;height:7px;display:inline-block;border-radius:50%;background:#efa84b;margin-right:6px}.links a{color:#8ddcff;text-decoration:none;font-size:12px;display:block;margin-top:10px}.notice{font-size:11px;border-left:2px solid #e9ad62;padding:10px;background:#242318;color:#dcd0b2;line-height:1.5;margin-top:18px}
+@media(max-width:1000px){.app{grid-template-columns:250px minmax(0,1fr)}.right{position:absolute;right:10px;top:75px;width:246px;max-height:calc(100dvh - 95px);z-index:5;box-shadow:0 0 20px #0008;border:1px solid #20334c;border-radius:10px}.rail{padding:15px}.bottom{bottom:10px}}
+@media(max-width:690px){body{overflow:auto}.app{display:block;height:auto}.rail{border:0}.sim{height:60vh;min-height:400px}.right{position:relative;right:auto;top:auto;width:auto;max-height:none;border-radius:0}.floathelp{max-width:260px}.bottom{font-size:10px}.top{left:10px;right:10px}}
+</style>
+</head>
+<body><div class="app">
+<aside class="rail">
+<div class="logo">◉ MARS / FLIGHT LAB</div>
+<div class="subtitle">MuJoCo WebAssembly · quadrotor dynamics</div>
+<h1>Flight operations</h1>
+<section class="controls">
+<button class="primary" id="takeoff">↑ Take off</button>
+<button id="land">↓ Land</button>
+<button id="mission" class="full">▶ Start waypoint mission</button>
+<button id="pause">Ⅱ Pause</button>
+<button id="reset" class="danger">↺ Reset</button>
+<button id="hover" class="full">◎ Hold position</button>
+</section>
+<h2>Manual navigation</h2>
+<p>Use <span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span> for horizontal motion, <span class="kbd">Q</span>/<span class="kbd">E</span> for down/up, or the control buttons below.</p>
+<section class="controls">
+<button data-move="y+">↑ Forward</button><button data-move="z+">＋ Altitude</button>
+<button data-move="x-">← Left</button><button data-move="x+">Right →</button>
+<button data-move="y-">↓ Backward</button><button data-move="z-">－ Altitude</button>
+</section>
+<h2>Environment</h2>
+<label class="field" for="wind">Horizontal wind disturbance</label>
+<div class="rowfield"><input id="wind" type="range" min="0" max="3" step=".25" value=".25"><span id="windval" class="value">0.25 N</span></div>
+<label class="field" for="speed">Mission target speed</label>
+<div class="rowfield"><input id="speed" type="range" min=".5" max="3" step=".25" value="1.5"><span id="speedval" class="value">1.50 m/s</span></div>
+<label class="field" for="sf">LoRa spreading factor (illustrative link overlay)</label>
+<select id="sf"><option>SF7</option><option>SF8</option><option selected>SF9</option><option>SF10</option><option>SF11</option><option>SF12</option></select>
+<p>LoRa panel displays a simple estimated RSSI/margin. It is not a live ROS 2 connection or packet-level network co-simulation.</p>
+<div class="notice">Physics runs locally in your browser via official MuJoCo WASM. Vercel serves the app; it does not run a remote Python simulator.</div>
+</aside>
+<main class="sim">
+<div id="viewport"></div>
+<div class="overlay top"><div class="pill"><span class="state-dot" id="dot"></span><span id="status">INITIALIZING PHYSICS</span></div><div class="pill"><strong>MuJoCo WASM</strong> · local physics</div></div>
+<div id="help" class="floathelp">Loading physics engine and initializing quadrotor. Controls unlock after MuJoCo starts.</div>
+<div class="overlay bottom"><div class="pill">DRONE <b id="flightmode">STANDBY</b> · x <span id="xpos">0.00</span> y <span id="ypos">0.00</span> z <span id="zpos">0.50</span> m</div><div class="pill">Mouse: orbit / zoom · Keyboard: WASD, Q/E</div></div>
+</main>
+<aside class="rail right">
+<div class="logo">LIVE TELEMETRY</div>
+<h2>Physics state</h2>
+<div class="met"><div class="metric"><div class="k">Simulation time</div><div class="v" id="time">0.0 s</div></div><div class="metric"><div class="k">Altitude</div><div class="v" id="altitude">0.50 m</div></div>
+<div class="metric"><div class="k">3D velocity</div><div class="v" id="velocity">0.00</div></div><div class="metric"><div class="k">Rotor thrust</div><div class="v" id="thrust">0 N</div></div>
+<div class="metric"><div class="k">Distance to GCS</div><div class="v" id="distance">0 m</div></div><div class="metric"><div class="k">Link estimate</div><div class="v" id="rssi">—</div></div></div>
+<h2>Link status</h2><p id="linklabel">Radio estimate pending initialization.</p>
+<h2>Waypoints</h2><p id="waypoints">No active mission.</p>
+<h2>Flight events</h2><div id="events" aria-live="polite"></div>
+<section class="controls" style="margin-top:12px"><button id="export" class="full">↓ Export flight CSV</button><button id="camera" class="full">⌾ Toggle follow camera</button></section>
+<h2>Project</h2><div class="links"><a href="https://github.com/lalitkumar790/mars-lora/tree/main/mujoco_sim" target="_blank" rel="noopener">MuJoCo model and Python counterpart ↗</a><a href="https://github.com/lalitkumar790/mars-lora" target="_blank" rel="noopener">Source repository ↗</a></div>
+</aside>
+</div><script type="module" src="/src/main.js"></script></body></html>
