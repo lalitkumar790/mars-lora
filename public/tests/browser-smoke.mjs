@@ -7,6 +7,7 @@ page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try {
  await page.goto('http://127.0.0.1:5173/', {waitUntil:'domcontentloaded',timeout:45000});
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:50000});
+ await page.waitForFunction(() => document.querySelector('#events')?.textContent.includes('Loaded original Skydio X2 CAD mesh'), null, {timeout:30000});
  await page.locator('#navSource').selectOption('slam');
  await page.waitForFunction(() => Number(document.querySelector('#slamScans')?.textContent||'0')>=2, null, {timeout:20000});
  const initial = parseFloat(await page.locator('#altitude').innerText());
@@ -28,6 +29,7 @@ try {
  if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
  await page.locator('#airframe').selectOption('crazyflie');
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:25000});
+ await page.waitForFunction(() => document.querySelector('#events')?.textContent.includes('Loaded original Crazyflie 2 CAD mesh'), null, {timeout:30000});
  const cfInitial=parseFloat(await page.locator('#altitude').innerText());
  await page.locator('#takeoff').click();
  await page.waitForFunction((initial) => parseFloat(document.querySelector('#altitude')?.textContent||'0') > initial + .2, cfInitial, { timeout:25000 });
