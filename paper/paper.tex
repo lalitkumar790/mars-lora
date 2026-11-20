@@ -13,9 +13,9 @@ Robotic operations require more than eventual packet delivery. LoRa trades low-p
 \section{Related Work and Scope}
 LoRa spreading factor changes sensitivity and airtime \cite{bor}; LoRaWAN adds network procedures not included here \cite{centenaro}. We model raw point-to-point LoRa, not LoRaWAN. MuJoCo \cite{todorov} and ROS 2 \cite{macenski} offer future flight integration, but the present baseline produces kinematic trajectories. A physically simulated drone remains necessary for full robotics-system claims.
 \section{Mission and Link Model}
-A single UAV follows a rectangular 900-m inspection route around a fixed ground station. Nominal speeds are 2, 5, and 9 m/s; timestep is 0.5 s. A designated shadowing region introduces 17 dB obstruction. Routine messages expire after 8 s; critical alerts generated every 45 s expire after 3 s.
+A single UAV follows a high-loss urban (path-loss exponent 4) rectangular 900-m inspection route around a fixed ground station. Nominal speeds are 2, 5, and 9 m/s; timestep is 0.5 s. A designated shadowing region introduces 17 dB obstruction. Routine messages expire after 8 s; critical alerts generated every 45 s expire after 3 s.
 Received power in dBm follows
-\begin{equation}P_r=14-31.2-27\log_{10}(\max\{1,d\})-L_{obs}+X_t.\end{equation}
+\begin{equation}P_r=14-31.2-40\log_{10}(\max\{1,d\})-L_{obs}+X_t.\end{equation}
 Here distance $d$ is in metres, $L_{obs}\in\{0,17\}$ dB, and correlated Gaussian shadowing satisfies
 \begin{equation}X_t=0.96X_{t-1}+\sqrt{1-0.96^2}\epsilon_t,\quad\epsilon_t\sim\mathcal N(0,\sigma^2).\end{equation}
 We study $\sigma\in\{1,4,8\}$ dB. SF7--SF12, 125 kHz bandwidth, coding rate 4/5, explicit header, and CRC determine transmitter airtime. Success probability uses an SF-dependent sensitivity sigmoid multiplied by 0.9 synthetic occupancy. This factor is not a realistic co-channel collision model; SF changes assume instantaneous receiver coordination. Estimated TX energy is $0.12\sum_i T_{air,i}$ joules, excluding flight and receiver energy.
