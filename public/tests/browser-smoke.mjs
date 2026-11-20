@@ -7,6 +7,8 @@ page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try {
  await page.goto('http://127.0.0.1:5173/', {waitUntil:'domcontentloaded',timeout:45000});
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:50000});
+ await page.locator('#navSource').selectOption('slam');
+ await page.waitForFunction(() => Number(document.querySelector('#slamScans')?.textContent||'0')>=2, null, {timeout:20000});
  const initial = parseFloat(await page.locator('#altitude').innerText());
  await page.locator('#takeoff').click();
  await page.waitForTimeout(4000);
@@ -15,6 +17,7 @@ try {
  if (!(altitude > initial+.2 && altitude < 15 && time >= .8)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#mission').click();
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
+ await page.locator('#navSource').selectOption('truth');
  await page.locator('#radioMode').selectOption('priority');
  await page.locator('#alert').click();
  await page.waitForFunction(() => document.querySelector('#radioAlerts')?.textContent.endsWith('/1'), null, {timeout:15000});
