@@ -457,7 +457,7 @@ on('cityCamera',()=>{
  follow=false;camera.position.set(52,-65,57);orbit.target.set(0,0,8);orbit.update();
  report('City overview: inspecting the physically collidable urban canyon. Use OrbitControls to zoom into streets.');
 });
-on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -502,7 +502,7 @@ async function initialize(){
   momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;
   drone.scale.setScalar(1);
   mujoco.mj_forward(model,data);
-  rotorState=[0,0,0,0];ready=true;desired=[0,0,.5];controller();updateUI();
+  rotorState=[mjMass*9.81/4,mjMass*9.81/4,mjMass*9.81/4,mjMass*9.81/4];ready=true;desired=[0,0,.5];controller();updateUI();
   status('PHYSICS ONLINE');
   $('help').hidden=true;
   report('MuJoCo WebAssembly engine initialized, model compiled ('+model.nbody+' bodies).');
@@ -527,7 +527,7 @@ $('airframe').addEventListener('change',async e=>{
   ({mass_kg:mjMass,rotor_x_m:armX,rotor_y_m:armY,max_rotor_thrust_N:modelThrustMax}=PHYSICAL_AIRFRAMES[airframe]);
   momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;
   drone.scale.setScalar(1);
-  mujoco.mj_forward(model,data);rotorState=[0,0,0,0];ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
+  mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
   setMode('Standby');status('PHYSICS ONLINE');report('Loaded '+(airframe==='crazyflie'?'Crazyflie 2 27 g':'Skydio X2 1.325 kg')+' airframe.');
  }catch(err){console.error(err);status('MODEL LOAD FAILED','#f87171');$('help').hidden=false;$('help').textContent=err.message;}
 });
