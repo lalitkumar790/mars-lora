@@ -13,9 +13,9 @@
     4
   ],
   "receiver_xyz_m": [
-    35.0,
-    28.0,
-    8.0
+    230.0,
+    220.0,
+    120.0
   ],
   "conditions": [
     "S0_shortest_fixed",
