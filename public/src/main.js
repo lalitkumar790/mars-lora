@@ -111,7 +111,7 @@ let wind=.25,missionSpeed=1.5,flightLog=[];
 let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
 const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
-const slam=new PlanarSLAM();const slamLog=[];let lastScan=-1,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
+const slam=new PlanarSLAM();const slamLog=[];let lastScan=-1,lastObservableTime=0,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
 function report(message) {
@@ -197,7 +197,11 @@ function controller(){
  const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
  lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-nx,desired[1]-ny),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
   windForce:wind*(mjMass/1.2),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
- if(mission && (clearance.distance<.25 || data.ncon>0)){
+ if(mission && navSlam && data.time-lastObservableTime>12){
+   mission=false;desired=[nx,ny,Math.max(pos[2],3.2)];
+   setMode('Localization lost — hold');
+   report('GPS-denied navigation stopped: no usable LiDAR landmarks for over 12 simulated seconds.');
+ }else if(mission && (clearance.distance<.25 || data.ncon>0)){
    mission=false;
    desired=[pos[0],pos[1],Math.max(pos[2],transitAltitude)];
    setMode('Safety hold — clearance breach');
@@ -337,6 +341,7 @@ function frame(now){
     const p=data.qpos,v=data.qvel;
     const trueYaw=yawOfQuaternion(Array.from(p.slice(3,7)));
     const scan=nativeScan(data);
+    if(scan.valid>=3)lastObservableTime=data.time;
     // A noisy body-frame velocity/gyro sensor proxy. This intentionally
     // injects bias and does not expose ground-truth position to the estimator.
     const vx=Math.cos(trueYaw)*v[0]+Math.sin(trueYaw)*v[1];
@@ -401,6 +406,9 @@ on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1]
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
 on('mission',()=>{
  if(!ready)return;
+ if($('navSource').value==='slam' && $('missionType').value!=='mapping'){
+   report('GPS-denied inspection refused: 7 m overhead route has no horizontal LiDAR landmarks. Select 3.2 m landmark survey or use physics-truth reference navigation.');return;
+ }
  const route=$('missionType').value==='mapping'?mappingWaypoints:missionWaypoints;
  useRoute(route);
  if(plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
@@ -417,7 +425,7 @@ on('mission',()=>{
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -432,7 +440,7 @@ window.addEventListener('keydown',event=>{
 for(const [id,fn] of [['wind',v=>wind=v],['speed',v=>missionSpeed=v]]){
  $(id).addEventListener('input',e=>{fn(Number(e.target.value));$(id+'val').textContent=Number(e.target.value).toFixed(2)+(id==='wind'?' N':' m/s');});
 }
-on('resetSlam',()=>{slam.reset();slamLog.length=0;previousYaw=null;lastScan=-1;report('GPS-denied mapping map and pose estimate reset.');});
+on('resetSlam',()=>{slam.reset();slamLog.length=0;previousYaw=null;lastScan=-1;lastObservableTime=0;report('GPS-denied mapping map and pose estimate reset.');});
 $('navSource').addEventListener('change',()=>{report('Horizontal navigation input: '+($('navSource').value==='slam'?'GPS-denied scan-matched odometry':'simulator ground truth'));});
 on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-second critical radio alert');});
 $('radioMode').addEventListener('change',()=>{if(!ready)return;radio.reset();lastRadio=-1;report('Reset radio emulator: '+$('radioMode').selectedOptions[0].textContent);});
