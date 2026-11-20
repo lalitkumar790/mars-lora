@@ -2,7 +2,11 @@ import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
 import { PlanarSLAM,yawOfQuaternion } from './slam.js';
-import {withNativeLidar,nativeScan} from './mujoco_lidar.js';
+import {withNativeLidar,nativeScan,obstacleScan} from './mujoco_lidar.js';
+import {loadAirframeCAD,PHYSICAL_AIRFRAMES} from './airframes.js';
+import {withCity,addCityToScene,CITY_BUILDINGS} from './city.js';
+import {WaypointTracker} from './trajectory.js';
+import {scanHazard} from './avoidance.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -11,6 +15,7 @@ import wasmUrl from '@mujoco/mujoco/mujoco.wasm?url';
 
 const $ = id => document.getElementById(id);
 const scene = new THREE.Scene();
+addCityToScene(scene);
 scene.background = new THREE.Color(0x0a1725);
 scene.fog = new THREE.FogExp2(0x0a1725, 0.012);
 const camera = new THREE.PerspectiveCamera(52, 1, .03, 150);
@@ -105,7 +110,10 @@ for(let i=0;i<waypointPositions.length;i++){
  const marker=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));
  marker.position.set(x,y,z);scene.add(marker);waypointObjects.push(marker);
 }
-let airframe='heavy', mjMass=1.2, arm=.21, momentScale=1, modelThrustMax=15;
+let airframe='heavy', mjMass=1.325, armX=.14,armY=.18, momentScale=1, modelThrustMax=13;
+let visualInitialized=false;
+const pathTracker=new WaypointTracker();let pathError=0,speedReference=0;
+let sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};let hazard={blocked:false,distance:Infinity};let obstacleHoldTime=0;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
 let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
@@ -154,19 +162,29 @@ function controller(){
   else goTo(waypointIndex+1);
  }
  const target=waypointPositions[waypointIndex];
- const planar=Math.hypot(target[0]-nx,target[1]-ny);
- // Slow the target convergence enough to respect requested mission speed.
- // Altitude-first: never begin horizontal translation below the known
- // obstacle transit envelope (max solid elevation + 0.9 m buffer).
+ const guidance=pathTracker.update(waypointIndex,waypointPositions,[nx,ny],missionSpeed);
  const rising=target[2]>=transitAltitude && pos[2]<transitAltitude-.35;
- const lead=Math.min(1.2,Math.max(.4,missionSpeed*.6));
- const scale=Math.min(1,lead/Math.max(.1,planar));
- desired[0]=rising?nx:nx+(target[0]-nx)*scale;
- desired[1]=rising?ny:ny+(target[1]-ny)*scale;
+ // Continuous path targeting: project onto path segment, look ahead,
+ // and slow down as the segment end approaches (rather than chase points).
+ desired[0]=rising?nx:guidance.target[0];
+ desired[1]=rising?ny:guidance.target[1];
  desired[2]=target[2];
+ pathError=guidance.crossTrack;
+ speedReference=Math.hypot(...guidance.velocity);
+ // Rangefinder-only collision supervisor: forward sector blocks movement
+ // in the direction of the mission. Safety check on MuJoCo truth remains
+ // a separate research oracle and is not fed to guidance.
+ if(hazard.blocked){
+   mission=false;
+   desired=[nx,ny,pos[2]];
+   obstacleHoldTime=data.time;
+   setMode('LiDAR obstacle brake — hover');
+   report('Sensor-based obstacle hold: forward range '+hazard.distance.toFixed(2)+' m. Manual re-plan required.');
  }
- const ax=snap(1.0*(desired[0]-nx)-1.65*vel[0],-1.2,1.2);
- const ay=snap(1.0*(desired[1]-ny)-1.65*vel[1],-1.2,1.2);
+
+ }
+ const ax=snap(1.12*(desired[0]-nx)-1.85*vel[0],-1.4,1.4);
+ const ay=snap(1.12*(desired[1]-ny)-1.85*vel[1],-1.4,1.4);
  // Rotate world-XY acceleration demand into yaw-relative body axes.
  const bx=Math.cos(yaw)*ax+Math.sin(yaw)*ay;
  const by=-Math.sin(yaw)*ax+Math.cos(yaw)*ay;
@@ -177,10 +195,16 @@ function controller(){
  const t=mjMass*snap((9.81+3.0*(desired[2]-pos[2])-2.9*vel[2])/tiltFactor,1,18);
  const mx=momentScale*snap(.95*(rollTarget-roll)-.32*vel[3],-.55,.55);
  const my=momentScale*snap(.95*(pitchTarget-pitch)-.32*vel[4],-.55,.55);
- const a=arm, xy=[[a,a],[a,-a],[-a,-a],[-a,a]];
+ const xy=airframe==='crazyflie'?[[armX,armY],[armX,-armY],[-armX,-armY],[-armX,armY]]:
+   [[-armX,-armY],[-armX,armY],[armX,armY],[armX,-armY]];
  for(let i=0;i<4;i++){
   const [x,y]=xy[i];
-  const demand=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,modelThrustMax);
+  // Roll/pitch moments allocated from the measured rotor arm distances.
+  // This mixer also includes yaw reaction torque for Skydio X2.
+  const yawMoment=airframe==='crazyflie'?0:snap(-.01*yaw-.008*vel[5],-.02,.02);
+  const yawSign=(i%2===0?-1:1),kYaw=airframe==='crazyflie'?0:.0201;
+  const yawTrim=kYaw?yawMoment*yawSign/(4*kYaw):0;
+  const demand=snap(t/4+mx*y/(4*armY*armY)-my*x/(4*armX*armX)+yawTrim,0,modelThrustMax);
   // Approximate first-order electronic motor response: 60 ms time constant,
   // updated at 50 Hz. Rotor RPM is NOT explicitly simulated.
   rotorState[i]+=(1-Math.exp(-.02/.06))*(demand-rotorState[i]);
@@ -246,6 +270,8 @@ function updateUI(){
  $('slamScans').textContent=String(slam.scanCount);
  $('slamError').textContent=slamTruthError.toFixed(2)+' m';
  $('slamCorrections').textContent=String(slam.matches);
+ $('obstacleStatus').textContent='Horizontal LiDAR: '+(Number.isFinite(hazard.distance)?hazard.distance.toFixed(2)+'m':'clear')+' forward · down-tilted roof scan '+(Number.isFinite(sensedObstacles.nearest)?sensedObstacles.nearest.toFixed(2)+'m':'clear')+' · '+sensedObstacles.valid+' returns. '+(hazard.blocked?'BRAKE REQUEST':'No frontal hazard');
+ $('cityStats').textContent=CITY_BUILDINGS.length+' physical buildings · deterministic urban canyon · original CAD airframes';
  $('slamStatus').textContent=slam.lastHits<4?'LOW OBSERVABILITY: horizontal 2D scan sees too few nearby surfaces at current altitude. Odometry drift can accumulate.':'Mapping returns '+slam.lastHits+' / '+(slam.lastScan?.ranges.length??0)+', local scan match score '+slam.lastFitness.toFixed(2)+', map coverage '+slam.occupancyPercentage().toFixed(1)+'%.';
  drawSLAMMap();
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
@@ -341,6 +367,8 @@ function frame(now){
     const p=data.qpos,v=data.qvel;
     const trueYaw=yawOfQuaternion(Array.from(p.slice(3,7)));
     const scan=nativeScan(data);
+    sensedObstacles=obstacleScan(data);
+    hazard=scanHazard(scan,0,1.65);
     if(scan.valid>=3)lastObservableTime=data.time;
     // A noisy body-frame velocity/gyro sensor proxy. This intentionally
     // injects bias and does not expose ground-truth position to the estimator.
@@ -414,7 +442,7 @@ on('mission',()=>{
  if(plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
    report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
  }
- mission=true;goTo(0);
+ mission=true;pathTracker.reset();goTo(0);
  if($('missionType').value==='mapping'){
    setMode('GPS-denied landmark survey');
    report('3.2 m mapping survey: LiDAR returns from vertical landmarks support occupancy mapping. Navigation source: '+$('navSource').value+'.');
@@ -425,7 +453,7 @@ on('mission',()=>{
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -462,18 +490,20 @@ async function initialize(){
  try{
   status('LOADING MUJOCO WASM','#f0b764');
   mujoco=await loadMujoco({locateFile:file=>file.endsWith('.wasm')?wasmUrl:file});
-  const xml=withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML);
+  const xml=withCity(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML));
   model=mujoco.MjModel.from_xml_string(xml);
   if(!model)throw Error('MuJoCo MJCF compilation returned no model');
   data=new mujoco.MjData(model);
-  mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
-  drone.scale.setScalar(airframe==='crazyflie'?.23:1);
+  ({mass_kg:mjMass,rotor_x_m:armX,rotor_y_m:armY,max_rotor_thrust_N:modelThrustMax}=PHYSICAL_AIRFRAMES[airframe]);
+  momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;
+  drone.scale.setScalar(1);
   mujoco.mj_forward(model,data);
   rotorState=[0,0,0,0];ready=true;desired=[0,0,.5];controller();updateUI();
   status('PHYSICS ONLINE');
   $('help').hidden=true;
   report('MuJoCo WebAssembly engine initialized, model compiled ('+model.nbody+' bodies).');
   report('Use Take off, waypoint mission, or manual controls.');
+  loadAirframeCAD(drone,airframe,rotors,report).catch(e=>report('CAD load fallback: '+e.message));
  }catch(error){
   console.error(error);status('PHYSICS FAILED','#ff6f81');
   $('help').hidden=false;$('help').textContent='Unable to load MuJoCo WebAssembly: '+error.message+'. Check browser WebGL/WebAssembly support and refresh.';
@@ -482,18 +512,19 @@ async function initialize(){
 }
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
- paused=true;ready=false;airframe=e.target.value;
+ paused=true;ready=false;airframe=e.target.value;pathTracker.reset();hazard={blocked:false,distance:Infinity};
  mission=false;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
-  model=mujoco.MjModel.from_xml_string(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML));
+  model=mujoco.MjModel.from_xml_string(withCity(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML)));
+  loadAirframeCAD(drone,airframe,rotors,report).catch(e=>report('CAD load fallback: '+e.message));
   data=new mujoco.MjData(model);
-  mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;
-  momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
-  drone.scale.setScalar(airframe==='crazyflie'?.23:1);
+  ({mass_kg:mjMass,rotor_x_m:armX,rotor_y_m:armY,max_rotor_thrust_N:modelThrustMax}=PHYSICAL_AIRFRAMES[airframe]);
+  momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;
+  drone.scale.setScalar(1);
   mujoco.mj_forward(model,data);rotorState=[0,0,0,0];ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
-  setMode('Standby');status('PHYSICS ONLINE');report('Loaded '+(airframe==='crazyflie'?'Crazyflie 2-derived 27 g':'Inspection 1.2 kg')+' airframe.');
+  setMode('Standby');status('PHYSICS ONLINE');report('Loaded '+(airframe==='crazyflie'?'Crazyflie 2 27 g':'Skydio X2 1.325 kg')+' airframe.');
  }catch(err){console.error(err);status('MODEL LOAD FAILED','#f87171');$('help').hidden=false;$('help').textContent=err.message;}
 });
 initialize();
