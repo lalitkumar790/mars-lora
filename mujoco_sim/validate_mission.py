@@ -86,11 +86,12 @@ def run(airframe,duration=240,wind=.25,out=None):
             tilt=math.degrees(math.hypot(roll,pitch))
             max_tilt=max(max_tilt,tilt)
         mujoco.mj_step(model,data)
+        # Check every physics step, not just the downsampled CSV rate.
+        clearance=signed_clearance(data.qpos[:3],.08 if airframe=="crazyflie" else .32)
+        minimum=min(minimum,clearance)
+        contacts+=int(data.ncon>0)
         if k%25==0:
             p=data.qpos;v=data.qvel
-            clearance=signed_clearance(p[:3],.08 if airframe=="crazyflie" else .32)
-            minimum=min(minimum,clearance)
-            contacts+=int(data.ncon>0)
             err=math.sqrt(sum((desired[i]-p[i])**2 for i in range(3)))
             max_error=max(max_error,err)
             records.append((round(float(data.time),4),*map(float,p[:3]),idx,clearance,data.ncon,tilt,err))
