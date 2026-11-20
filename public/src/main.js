@@ -1,6 +1,7 @@
 import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
+import { missionWaypoints, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -82,7 +83,7 @@ const tracePoints=[];
 let traceLine=null;
 const traceMaterial=new THREE.LineBasicMaterial({color:0x55dcf2,transparent:true,opacity:.7});
 const waypointObjects=[];
-const waypointPositions=[[2,0,3.5],[2,8,3.5],[-7,8,4],[-7,-7,4],[0,0,2.5]];
+const waypointPositions=missionWaypoints;
 for(let i=0;i<waypointPositions.length;i++){
  const [x,y,z]=waypointPositions[i];
  const marker=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));
@@ -91,6 +92,8 @@ for(let i=0;i<waypointPositions.length;i++){
 let airframe='heavy', mjMass=1.2, arm=.21, momentScale=1, modelThrustMax=15;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
+let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
+const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
@@ -124,25 +127,35 @@ function controller(){
  if(mission){
  const wp=waypointPositions[waypointIndex],delta=[wp[0]-pos[0],wp[1]-pos[1],wp[2]-pos[2]];
  const dist=Math.hypot(...delta);
- if(dist<.55){
+ const speed3=Math.hypot(vel[0],vel[1],vel[2]);
+ if(dist<.5 && speed3<.65){
   if(waypointIndex===waypointPositions.length-1){mission=false;setMode('Mission complete');}
   else goTo(waypointIndex+1);
  }
  const target=waypointPositions[waypointIndex];
  const planar=Math.hypot(target[0]-pos[0],target[1]-pos[1]);
  // Slow the target convergence enough to respect requested mission speed.
- const scale=Math.min(1,missionSpeed/Math.max(.1,planar));
- desired[0]=pos[0]+(target[0]-pos[0])*scale;
- desired[1]=pos[1]+(target[1]-pos[1])*scale;
+ // Altitude-first: never begin horizontal translation below the known
+ // obstacle transit envelope (max solid elevation + 0.9 m buffer).
+ const rising=target[2]>=transitAltitude && pos[2]<transitAltitude-.35;
+ const lead=Math.min(1.2,Math.max(.4,missionSpeed*.6));
+ const scale=Math.min(1,lead/Math.max(.1,planar));
+ desired[0]=rising?pos[0]:pos[0]+(target[0]-pos[0])*scale;
+ desired[1]=rising?pos[1]:pos[1]+(target[1]-pos[1])*scale;
  desired[2]=target[2];
  }
- const ax=snap(1.1*(desired[0]-pos[0])-1.4*vel[0],-1.5,1.5);
- const ay=snap(1.1*(desired[1]-pos[1])-1.4*vel[1],-1.5,1.5);
- const rollTarget=snap(-ay/9.81,-.2,.2);
- const pitchTarget=snap(ax/9.81,-.2,.2);
- const t=mjMass*snap(9.81+3.0*(desired[2]-pos[2])-2.2*vel[2],1,18);
- const mx=momentScale*snap(1.1*(rollTarget-roll)-.22*vel[3],-.6,.6);
- const my=momentScale*snap(1.1*(pitchTarget-pitch)-.22*vel[4],-.6,.6);
+ const ax=snap(1.0*(desired[0]-pos[0])-1.65*vel[0],-1.2,1.2);
+ const ay=snap(1.0*(desired[1]-pos[1])-1.65*vel[1],-1.2,1.2);
+ // Rotate world-XY acceleration demand into yaw-relative body axes.
+ const bx=Math.cos(yaw)*ax+Math.sin(yaw)*ay;
+ const by=-Math.sin(yaw)*ax+Math.cos(yaw)*ay;
+ const rollTarget=snap(-by/9.81,-.16,.16);
+ const pitchTarget=snap(bx/9.81,-.16,.16);
+ // Gravity compensation accounts for the tilted thrust vector.
+ const tiltFactor=Math.max(.8,Math.cos(roll)*Math.cos(pitch));
+ const t=mjMass*snap((9.81+3.0*(desired[2]-pos[2])-2.9*vel[2])/tiltFactor,1,18);
+ const mx=momentScale*snap(.95*(rollTarget-roll)-.32*vel[3],-.55,.55);
+ const my=momentScale*snap(.95*(pitchTarget-pitch)-.32*vel[4],-.55,.55);
  const a=arm, xy=[[a,a],[a,-a],[-a,-a],[-a,a]];
  for(let i=0;i<4;i++){
   const [x,y]=xy[i];data.ctrl[i]=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,modelThrustMax);
@@ -152,10 +165,18 @@ function controller(){
   data.xfrc_applied[6]=wind*(mjMass/1.2)*Math.sin(data.time*.6);
   data.xfrc_applied[7]=wind*(mjMass/1.2)*Math.cos(data.time*.43);
  }
+ const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
+ lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-pos[0],desired[1]-pos[1]),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
+  windForce:wind*(mjMass/1.2),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
+ if(mission && (clearance.warning || data.ncon>0) && data.time-lastWarning>1){
+   lastWarning=data.time;report('Obstacle proximity: '+clearance.nearest+' / clearance '+clearance.distance.toFixed(2)+' m; contacts '+data.ncon);
+ }
 }
 function appendLog(){
  const p=data.qpos,v=data.qvel;
- flightLog.push([data.time,...Array.from(p.slice(0,7)),...Array.from(v.slice(0,3)),...Array.from(data.ctrl.slice(0,4))]);
+ flightLog.push([data.time,...Array.from(p.slice(0,7)),...Array.from(v.slice(0,3)),...Array.from(data.ctrl.slice(0,4)),
+   ...lastDebug.target,lastDebug.positionError,lastDebug.altError,lastDebug.tilt,lastDebug.clearance,data.ncon,
+   radio.summary(data.time).rssi??'',radio.sf,radio.generated,radio.received,radio.summary(data.time).aoi]);
  if(flightLog.length>18000)flightLog.shift();
 }
 function updateUI(){
@@ -178,6 +199,27 @@ function updateUI(){
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
+ $('desiredAlt').textContent=lastDebug.target[2].toFixed(2)+' m';
+ $('altError').textContent=lastDebug.altError.toFixed(2)+' m';
+ $('tiltDeg').textContent=lastDebug.tilt.toFixed(1)+'°';
+ $('clearance').textContent=lastDebug.clearance.toFixed(2)+' m';
+ $('contacts').textContent=String(data.ncon);
+ $('controllerState').textContent='50 Hz position / velocity → attitude PD → 4 rotor thrusts. Desired XYZ: '+lastDebug.target.map(n=>n.toFixed(2)).join(', ')+' m; position error '+lastDebug.positionError.toFixed(2)+' m. Wind force '+lastDebug.windForce.toFixed(3)+' N.';
+ const rp=rs.packet;
+ $('packetState').textContent=rp?(rp.expired?'EXPIRED':rp.ok?'RECEIVED':'LOST')+' · '+(rp.alert?'critical alert':'telemetry')+' · SF'+(rp.sf??rs.sf)+' · airtime '+((rp.toa??0)*1000).toFixed(1)+' ms':'No packets processed yet';
+ $('rfParams').textContent='Tx 14 dBm · BW 125 kHz · coding rate 4/5 · SF '+rs.sf+' · log-distance exponent 4 · correlated shadow σ 4 dB · obstruction loss 17 dB · synthetic competing traffic 10% · routine deadline 8s / alert 3s.';
+ if(t-lastDebugPlot>.3){lastDebugPlot=t;debugSamples.push({t,z,ref:lastDebug.target[2],rssi:rs.rssi,aoi:rs.aoi});if(debugSamples.length>120)debugSamples.shift();drawDebugPlot();}
+
+}
+function drawDebugPlot(){
+ const cv=$('debugChart');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
+ const w=cv.width,h=cv.height;ctx.clearRect(0,0,w,h);ctx.fillStyle='#091927';ctx.fillRect(0,0,w,h);
+ ctx.strokeStyle='#35556b';ctx.lineWidth=1;for(let i=1;i<4;i++){const y=i*h/4;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+ if(debugSamples.length<2)return;
+ const xmax=debugSamples.length-1;
+ const path=(key,stroke,min,max)=>{ctx.beginPath();ctx.lineWidth=2;ctx.strokeStyle=stroke;debugSamples.forEach((p,i)=>{const n=Number(p[key]);const x=i/xmax*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min)*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
+ path('ref','#f1bb78',0,9);path('z','#58d6eb',0,9);
+ ctx.fillStyle='#b7cce0';ctx.font='12px sans-serif';ctx.fillText('Altitude: actual blue / target amber',9,17);
 }
 function resize(){
  const root=$('viewport');
@@ -234,10 +276,17 @@ function on(id,fn){$(id).addEventListener('click',fn);}
 on('takeoff',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],2.5];setMode('Takeoff / hover');});
 on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],.32];setMode('Landing');});
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
-on('mission',()=>{if(!ready)return;mission=true;goTo(0);setMode('Waypoint mission');});
+on('mission',()=>{
+ if(!ready)return;
+ if(plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
+   report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
+ }
+ mission=true;goTo(0);setMode('Collision-aware elevated mission');
+ report('Climb to '+transitAltitude.toFixed(1)+' m above obstacle roofs before cross-site travel.');
+});
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -256,7 +305,7 @@ on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-s
 $('radioMode').addEventListener('change',()=>{if(!ready)return;radio.reset();lastRadio=-1;report('Reset radio emulator: '+$('radioMode').selectedOptions[0].textContent);});
 on('export',()=>{
  if(!flightLog.length){report('No flight trace to export');return;}
- const header='time_s,x_m,y_m,z_m,qw,qx,qy,qz,vx_mps,vy_mps,vz_mps,rotor1_N,rotor2_N,rotor3_N,rotor4_N';
+ const header='time_s,x_m,y_m,z_m,qw,qx,qy,qz,vx_mps,vy_mps,vz_mps,rotor1_N,rotor2_N,rotor3_N,rotor4_N,target_x,target_y,target_z,xy_error_m,z_error_m,tilt_deg,obstacle_clearance_m,contact_count,rssi_dbm,sf,generated,received,aoi_s';
  const blob=new Blob([header+'\n'+flightLog.map(r=>r.join(',')).join('\n')],{type:'text/csv'});
  const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='mars-lora-mujoco-flight.csv';link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
  report('Exported '+flightLog.length+' physics samples');
@@ -286,7 +335,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;
- mission=false;flightLog=[];radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;flightLog=[];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
