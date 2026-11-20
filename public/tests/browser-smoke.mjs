@@ -15,6 +15,9 @@ try {
  if (!(altitude > initial+.2 && altitude < 15 && time >= .8)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#mission').click();
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
+ await page.locator('#radioMode').selectOption('priority');
+ await page.locator('#alert').click();
+ await page.waitForFunction(() => document.querySelector('#radioAlerts')?.textContent.endsWith('/1'), null, {timeout:15000});
  await page.locator('#pause').click();
  if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
  await page.locator('#airframe').selectOption('crazyflie');
