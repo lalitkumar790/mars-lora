@@ -1,7 +1,8 @@
 import quadXML from '../quad.xml?raw';
 import crazyflieXML from '../crazyflie.xml?raw';
 import { LiveLink } from './link.js';
-import { PlanarSLAM,simulateScan,yawOfQuaternion } from './slam.js';
+import { PlanarSLAM,yawOfQuaternion } from './slam.js';
+import {withNativeLidar,nativeScan} from './mujoco_lidar.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -335,7 +336,7 @@ function frame(now){
     lastScan=data.time;
     const p=data.qpos,v=data.qvel;
     const trueYaw=yawOfQuaternion(Array.from(p.slice(3,7)));
-    const scan=simulateScan([p[0],p[1],p[2],trueYaw],{beams:64,maxRange:18,seed:slamSeed++});
+    const scan=nativeScan(data);
     // A noisy body-frame velocity/gyro sensor proxy. This intentionally
     // injects bias and does not expose ground-truth position to the estimator.
     const vx=Math.cos(trueYaw)*v[0]+Math.sin(trueYaw)*v[1];
@@ -440,7 +441,7 @@ async function initialize(){
  try{
   status('LOADING MUJOCO WASM','#f0b764');
   mujoco=await loadMujoco({locateFile:file=>file.endsWith('.wasm')?wasmUrl:file});
-  const xml=airframe==='crazyflie'?crazyflieXML:quadXML;
+  const xml=withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML);
   model=mujoco.MjModel.from_xml_string(xml);
   if(!model)throw Error('MuJoCo MJCF compilation returned no model');
   data=new mujoco.MjData(model);
@@ -465,7 +466,7 @@ $('airframe').addEventListener('change',async e=>{
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
-  model=mujoco.MjModel.from_xml_string(airframe==='crazyflie'?crazyflieXML:quadXML);
+  model=mujoco.MjModel.from_xml_string(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML));
   data=new mujoco.MjData(model);
   mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;
   momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
