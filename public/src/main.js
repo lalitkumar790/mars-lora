@@ -1,3 +1,4 @@
+import quadXML from '../quad.xml?raw';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -246,7 +247,7 @@ async function initialize(){
  try{
   status('LOADING MUJOCO WASM','#f0b764');
   mujoco=await loadMujoco({locateFile:file=>file.endsWith('.wasm')?wasmUrl:file});
-  const xml=await (await fetch('/quad.xml')).text();
+  const xml=quadXML;
   model=mujoco.MjModel.from_xml_string(xml);
   if(!model)throw Error('MuJoCo MJCF compilation returned no model');
   data=new mujoco.MjData(model);
