@@ -36,7 +36,9 @@ def quat_to_rpy(q):
     return (math.atan2(2*(w*x+y*z),1-2*(x*x+y*y)),
             math.asin(clamp(2*(w*y-z*x),-1,1)),
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
-def run(airframe,duration=240,wind=.25,out=None):
+def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False):
+    waypoints=list(ROUTE if route is None else route)
+    if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
     root=Path(__file__).resolve().parents[1]
     xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
     model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml))
@@ -47,7 +49,7 @@ def run(airframe,duration=240,wind=.25,out=None):
     moment_scale=2.3951e-5/.019 if airframe=="crazyflie" else 1.
     max_thrust=.15 if airframe=="crazyflie" else 13.
     desired=[0.,0.,.5]
-    rotor=[0.,0.,0.,0.]
+    rotor=[mass*9.81/4]*4
     idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
     records=[];cross_track=[]
     dt=model.opt.timestep
@@ -57,15 +59,15 @@ def run(airframe,duration=240,wind=.25,out=None):
         p=data.qpos;v=data.qvel
         if k%5==0:
             roll,pitch,yaw=quat_to_rpy(p[3:7])
-            target=ROUTE[idx]
+            target=waypoints[idx]
             delta=[target[i]-p[i] for i in range(3)]
             speed3=math.sqrt(sum(v[i]*v[i] for i in range(3)))
-            if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(ROUTE)-1:
+            if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
-                target=ROUTE[idx]
+                target=waypoints[idx]
             # Match browser lookahead tracking: project current XY onto the
             # segment, advance by 0.9m, and brake at each corner.
-            ax0,ay0=(0,0) if idx==0 else ROUTE[idx-1][:2]
+            ax0,ay0=(0,0) if idx==0 else waypoints[idx-1][:2]
             dx,dy=target[0]-ax0,target[1]-ay0
             L=math.hypot(dx,dy)
             if L>1e-9:
@@ -74,7 +76,7 @@ def run(airframe,duration=240,wind=.25,out=None):
                 lead=clamp(along+.9,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
-            rising=target[2]>=7 and p[2]<6.65
+            rising=target[2]>=6.8 and p[2]<target[2]-.35
             desired[0]=p[0] if rising else goalx
             desired[1]=p[1] if rising else goaly
             desired[2]=target[2]
@@ -113,18 +115,22 @@ def run(airframe,duration=240,wind=.25,out=None):
             records.append((round(float(data.time),4),*map(float,p[:3]),idx,clearance,data.ncon,tilt,err))
         if not all(math.isfinite(x) for x in data.qpos):
             raise RuntimeError("Non-finite MuJoCo pose")
-        if idx==len(ROUTE)-1 and math.dist(p[:3],ROUTE[-1])<.5 and math.sqrt(sum(x*x for x in v[:3]))<.65:
+        if idx==len(waypoints)-1 and math.dist(p[:3],waypoints[-1])<.5 and math.sqrt(sum(x*x for x in v[:3]))<.65:
             break
     if out:
         file=Path(out);file.parent.mkdir(parents=True,exist_ok=True)
         with file.open("w",newline="") as f:
             writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
             writer.writerows(records)
-    return dict(airframe=airframe,completed=idx==len(ROUTE)-1 and math.dist(data.qpos[:3],ROUTE[-1])<.5,
+    result=dict(airframe=airframe,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
                 max_tracking_error_m=round(max_error,2),
-                xy_tracking_rms_m=round(math.sqrt(sum(x*x for x in cross_track)/max(1,len(cross_track))),3))
+                xy_tracking_rms_m=round(math.sqrt(sum(x*x for x in cross_track)/max(1,len(cross_track))),3),
+                route_waypoints=len(waypoints),end_position_xyz=[round(float(a),3) for a in data.qpos[:3]])
+    if require_completion and (not result['completed'] or contacts>0 or minimum<.25):
+        raise RuntimeError('Route failed native MuJoCo safety validation: '+str(result))
+    return result
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--output",default="results/flight-validation")
