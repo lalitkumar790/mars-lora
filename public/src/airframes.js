@@ -14,7 +14,7 @@ const crazyflieAssets=[cf0,cf1,cf2,cf3,cf4,cf5,cf6];
 const cfColors=[0x191e24,0x1c3940,0xcdb564,0x95a4b2,0x909ba8,0x10171d,0xe2eef0];
 let loadNumber=0;
 function bladeGroup(x,y,z,r){
-  const group=new THREE.Group();const visualRotors=[];group.position.set(x,y,z);
+  const group=new THREE.Group();group.position.set(x,y,z);
   const hub=new THREE.Mesh(new THREE.CylinderGeometry(r*.13,r*.13,r*.16,16),new THREE.MeshStandardMaterial({color:0x232629,metalness:.55,roughness:.35}));
   hub.rotation.x=Math.PI/2;group.add(hub);
   const material=new THREE.MeshStandardMaterial({color:0x10141a,metalness:.15,roughness:.46,side:THREE.DoubleSide});
@@ -32,7 +32,7 @@ export const PHYSICAL_AIRFRAMES={
 };
 export async function loadAirframeCAD(drone,airframe,rotors,report=()=>{}){
   const ticket=++loadNumber;
-  const group=new THREE.Group();
+  const group=new THREE.Group();const visualRotors=[];
   if(airframe==='crazyflie'){
     const meshes=await Promise.all(crazyflieAssets.map(url=>loader.loadAsync(url)));
     for(let i=0;i<meshes.length;i++){
@@ -56,7 +56,7 @@ export async function loadAirframeCAD(drone,airframe,rotors,report=()=>{}){
     });obj.castShadow=true;obj.receiveShadow=true;});
     group.add(root);
     for(const [x,y,z] of [[-.14,-.18,.05],[-.14,.18,.05],[.14,.18,.08],[.14,-.18,.08]]){
-      const rotor=bladeGroup(x,y,z,.11);group.add(rotor);rotors.push(rotor);
+      const rotor=bladeGroup(x,y,z,.11);group.add(rotor);visualRotors.push(rotor);
     }
   }
   if(ticket!==loadNumber){group.traverse(obj=>{if(obj.geometry)obj.geometry.dispose()});return;}
