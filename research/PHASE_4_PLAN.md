@@ -41,3 +41,22 @@ Validate LoRa physical assumptions against measured SX126x/SX127x logs or an ind
 - Only figures constructed from executed experiment logs go in paper.tex.
 - The Vercel deployment is an **interactive simulator** and displays ephemeral live physics/LoRa telemetry, not publication trial data or generated research graphs.
 - Comparisons should not imply safety or flight certification.
+
+## Strongest candidate for the actual paper novelty
+
+**Risk-constrained joint 3D UAV trajectory and LoRa scheduling** rather than merely comparing adaptive-SF algorithms. Our new safe 7 m route is deliberately conservative; it is the safety baseline and may avoid precisely the non-line-of-sight situations we want to study. Next introduce a low-altitude but collision-free path planner and jointly compare:
+
+| Route | Planning objective | Expected tradeoff |
+|---|---|---|
+| R0 | Conservative 7-m roof-clearance corridor | Safe but extra climb / potentially different radio exposure |
+| R1 | 3D collision-free shortest route (A* on occupancy grid) | Faster but may enter shadow regions |
+| R2 | RF-aware 3D route with risk/deadline penalty | Potentially longer flight, less stale/dropped telemetry |
+| R3 | R2 with runtime LoRa SF + priority adaptation | Full candidate method |
+
+Define the decision vector over discrete path/height choices and link settings; evaluate Pareto tradeoffs using a scalarized objective such as
+
+\`J = w1 * alert_deadline_miss + w2 * AoI_p95 + w3 * collision_risk + w4 * flight_duration + w5 * radio_energy\`.
+
+Always constrain minimum obstacle clearance and onboard stabilization independently from radio reliability. Critically, do not introduce a synthetic RF advantage into R2 by calibrating only on its own trajectories. Use identical spatial RF random fields for all routes and matched seeds.
+
+Experimental matrices should vary waypoint geometry and true obstruction intersection, ground station placement, wind, path loss, and deadline urgency. Candidate finding: a route that maximizes PDR may still have inferior alert deadline reliability or mission-time cost, hence the need for cross-layer control. Negative results are acceptable.
