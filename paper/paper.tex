@@ -1,0 +1,49 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,graphicx,booktabs}
+\title{Mobility-Aware and Deadline-Constrained LoRa Communication for UAV Missions: A Simulation Framework}
+\author{\IEEEauthorblockN{Lalit Kumar}\IEEEauthorblockA{Robotics and Automation, MANIT Bhopal, India}}
+\begin{document}
+\maketitle
+\begin{abstract}
+LoRa enables long-range low-rate robotic telemetry, yet packet reception is not equivalent to fresh status or on-time safety alerts. We specify MARS-LoRa, a seeded simulation comparing fixed spreading factor, link-reactive adaptation, priority-aware scheduling, and a conservative mission slowdown policy. We evaluate application delivery, alert deadline satisfaction, age of information, outage duration, and transmission-energy proxy under mobility and shadowing. This version uses a kinematic route and simplified link reception, not validated physical flight or field radio. Quantitative results are added only when reproduced from executed experiment logs.
+\end{abstract}
+\begin{IEEEkeywords}LoRa, UAV, robotics, age of information, timely telemetry\end{IEEEkeywords}
+\section{Introduction}
+Robotic operations require more than eventual packet delivery. LoRa trades low-power range for transmission airtime, so long packets and weak links may compromise deadline-sensitive information \cite{bor,centenaro}. Age of Information (AoI) captures the freshness of received status \cite{kaul}. This paper asks how communication adaptation and mission-duration overhead influence critical alert timeliness under mobility. We contribute a reproducible simulator, explicit policy baselines, and a test protocol rather than an unverified improvement claim.
+\section{Related Work and Scope}
+LoRa spreading factor changes sensitivity and airtime \cite{bor}; LoRaWAN adds network procedures not included here \cite{centenaro}. We model raw point-to-point LoRa, not LoRaWAN. MuJoCo \cite{todorov} and ROS 2 \cite{macenski} offer future flight integration, but the present baseline produces kinematic trajectories. A physically simulated drone remains necessary for full robotics-system claims.
+\section{Mission and Link Model}
+A single UAV follows a rectangular 900-m inspection route around a fixed ground station. Nominal speeds are 2, 5, and 9 m/s; timestep is 0.5 s. A designated shadowing region introduces 17 dB obstruction. Routine messages expire after 8 s; critical alerts generated every 45 s expire after 3 s.
+Received power in dBm follows
+\begin{equation}P_r=14-31.2-27\log_{10}(\max\{1,d\})-L_{obs}+X_t.\end{equation}
+Here distance $d$ is in metres, $L_{obs}\in\{0,17\}$ dB, and correlated Gaussian shadowing satisfies
+\begin{equation}X_t=0.96X_{t-1}+\sqrt{1-0.96^2}\epsilon_t,\quad\epsilon_t\sim\mathcal N(0,\sigma^2).\end{equation}
+We study $\sigma\in\{1,4,8\}$ dB. SF7--SF12, 125 kHz bandwidth, coding rate 4/5, explicit header, and CRC determine transmitter airtime. Success probability uses an SF-dependent sensitivity sigmoid multiplied by 0.9 synthetic occupancy. This factor is not a realistic co-channel collision model; SF changes assume instantaneous receiver coordination. Estimated TX energy is $0.12\sum_i T_{air,i}$ joules, excluding flight and receiver energy.
+\section{Policies and Hypotheses}
+B1 fixes SF9 and transmits routine telemetry every 2 s. B2 selects the lowest SF satisfying a 6-dB sensitivity margin based on prior acknowledged RSSI, with the same interval. B3 adds critical-first queueing and reduces routine traffic to every 3 s. MARS limits SF changes to one step per decision, uses priority queueing, sends routine telemetry every 4 s, and slows the full mission to 80 percent of nominal speed. The latter is a conservative prototype, not yet a predicted-link-driven maneuver selector. The differing traffic rates confound comparisons; ablation is required to attribute causality. We hypothesize that timeliness and AoI can reveal tradeoffs hidden by overall delivery.
+\section{Reproducible Experiments}
+Four policies, three speeds, three shadow intensities, and 20 trial seeds yield 720 planned trials. The simulator exports trial-level and grouped CSVs. Application delivery fraction is received/generated. Critical deadline satisfaction is timely critical deliveries divided by generated critical alerts. For newest received creation time $u(t)$, freshness age is $\Delta(t)=t-u(t)$. An outage counts when more than 15 s pass without delivery. Additional outcomes are mean and trial-level 95th-percentile AoI, airtime, estimated TX energy, and mission duration. Pairing the RNG seeds does not enforce identical spatial fading across differently paced missions; a spatial common-random field is future work.
+\section{Results and Discussion}
+\textbf{Results status: pending executed and verified trials.} We intentionally avoid numerical claims before checking the generated logs. Figures are inserted only if produced by the repository plotting script from simulation CSVs.
+\begin{figure}[t]\centering
+\IfFileExists{figures/deadline_satisfaction.pdf}{\includegraphics[width=\linewidth]{figures/deadline_satisfaction.pdf}}{\fbox{Deadline plot pending verified run}}
+\caption{Critical-alert deadline satisfaction by speed at 4 dB shadowing.}\end{figure}
+\begin{figure}[t]\centering
+\IfFileExists{figures/aoi_p95.pdf}{\includegraphics[width=\linewidth]{figures/aoi_p95.pdf}}{\fbox{AoI plot pending verified run}}
+\caption{Mean trial-level 95th-percentile AoI at 4 dB shadowing.}\end{figure}
+\begin{figure}[t]\centering
+\IfFileExists{figures/outage.pdf}{\includegraphics[width=\linewidth]{figures/outage.pdf}}{\fbox{Outage plot pending verified run}}
+\caption{Fraction of time without any delivery for over 15 s.}\end{figure}
+Interpretation will report critical timeliness jointly with mission overhead and delivery. Longer SF airtime may offset increased weak-signal sensitivity. Negative findings remain publishable when limitations are explicit.
+\section{Limitations and Deployment}
+The channel omits actual radio measurements, antenna orientation, real packet collisions, regulatory duty-cycle scheduling, and control-plane SF handshakes. The kinematic route does not demonstrate safe dynamics, obstacle avoidance or actuator feasibility. A global slowdown is not predictive mobility adaptation. Accordingly, results are hypothesis-generating simulation outcomes, not field evidence. Future validation should compare channel predictions with ns-3 or measured LoRa logs, replay time-aligned MuJoCo poses, and integrate ROS 2 flight autonomy.
+\section{Conclusion}
+This open framework makes deadline reliability, freshness, and mission cost jointly measurable for raw-LoRa-linked aerial robots. Its preliminary value is a falsifiable experiment protocol rather than established superiority. Future work will test true link-predictive flight actions and calibrate channel and collision parameters.
+\begin{thebibliography}{5}
+\bibitem{bor} M. Bor et al., ``Do LoRa low-power wide-area networks scale?'' Proc. ACM MSWiM, pp. 59--67, 2016.
+\bibitem{centenaro} M. Centenaro et al., ``Long-range communications in unlicensed bands,'' IEEE Wireless Communications, vol. 23, no. 5, pp. 60--67, 2016.
+\bibitem{kaul} S. Kaul et al., ``Real-time status: How often should one update?'' Proc. IEEE INFOCOM, pp. 2731--2735, 2012.
+\bibitem{todorov} E. Todorov et al., ``MuJoCo: A physics engine for model-based control,'' Proc. IEEE/RSJ IROS, pp. 5026--5033, 2012.
+\bibitem{macenski} S. Macenski et al., ``Robot Operating System 2: Design, architecture, and uses in the wild,'' Science Robotics, vol. 7, no. 66, eabm6074, 2022.
+\end{thebibliography}
+\end{document}
