@@ -70,8 +70,8 @@ def link_rssi_dbm(position: tuple[float,float,float], shadow_offset: float,
                   correlation: float = 0.96) -> tuple[float,float]:
     x, y, z = position
     distance = max(1, math.sqrt(x*x + y*y + z*z))
-    # 868 MHz free-space path loss at 1m is about 31.2 dB.
-    path_loss = 31.2 + 10 * 2.7 * math.log10(distance)
+    # 868 MHz free-space path loss at 1m is about 31.2 dB; exponent 4 represents severe urban attenuation.
+    path_loss = 31.2 + 10 * 4.0 * math.log10(distance)
     # Synthetic obstruction rectangle along inspection corridor.
     obstruction = 17.0 if (x > 190 and 40 < y < 230) else 0.0
     shadow = correlation * previous_shadow + math.sqrt(1-correlation**2) * rng.gauss(0, shadow_offset)
