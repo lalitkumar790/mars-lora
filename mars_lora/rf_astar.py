@@ -23,7 +23,7 @@ INDUSTRIAL=(
 )
 SOLIDS=INDUSTRIAL+tuple(city())
 START=(0.,0.,4.)
-GOAL=(-24.,24.,4.)
+GOAL=(-30.,24.,4.)
 GCS=(35.,28.,8.)
 SPACING=3.
 ALTITUDES=(4.,7.,10.,13.,17.,21.,26.)
@@ -98,7 +98,7 @@ def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
     if name not in ("shortest","rf_aware"):raise ValueError("Unknown method")
     if radius<=0 or margin<0:raise ValueError("Invalid clearance")
     start=(0,0,nearest_k(START[2]))
-    goal=(-8,8,nearest_k(GOAL[2]))
+    goal=(-10,8,nearest_k(GOAL[2]))
     def safe_node(n):
         i,j,k=n
         if abs(i*SPACING)>max_lateral or abs(j*SPACING)>max_lateral:return False
