@@ -24,7 +24,7 @@ try {
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:25000});
  const cfInitial=parseFloat(await page.locator('#altitude').innerText());
  await page.locator('#takeoff').click();
- await page.waitForTimeout(3500);
+ await page.waitForFunction((initial) => parseFloat(document.querySelector('#altitude')?.textContent||'0') > initial + .2, cfInitial, { timeout:25000 });
  const cfAltitude=parseFloat(await page.locator('#altitude').innerText());
  if (!(cfAltitude>cfInitial+.2 && cfAltitude<12)) throw new Error('Crazyflie physics takeoff failed: '+JSON.stringify({cfInitial,cfAltitude}));
  await page.locator('#airframe').selectOption('heavy');
