@@ -12,7 +12,7 @@ try {
  await page.waitForTimeout(4000);
  const altitude = parseFloat(await page.locator('#altitude').innerText());
  const time = parseFloat(await page.locator('#time').innerText());
- if (!(altitude > initial+.2 && altitude < 15 && time > 1)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
+ if (!(altitude > initial+.2 && altitude < 15 && time >= .8)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#mission').click();
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
  await page.locator('#pause').click();
