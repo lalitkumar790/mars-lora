@@ -248,7 +248,7 @@ function drawRFPlot(){
  const w=cv.width,h=cv.height;ctx.fillStyle='#091927';ctx.fillRect(0,0,w,h);
  for(let j=1;j<4;j++){ctx.strokeStyle='#254253';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,h*j/4);ctx.lineTo(w,h*j/4);ctx.stroke();}
  if(debugSamples.length<2)return;
- const curve=(key,min,max,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();debugSamples.forEach((p,i)=>{const n=p[key]??min,x=i/(debugSamples.length-1)*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min))*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
+ const curve=(key,min,max,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();debugSamples.forEach((p,i)=>{const n=p[key]??min,x=i/(debugSamples.length-1)*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min)*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
  curve('rssi',-150,-60,'#61d6f0');curve('aoi',0,20,'#f7bb67');
  ctx.font='12px sans-serif';ctx.fillStyle='#b7cce0';ctx.fillText('RSSI blue (-150..-60 dBm) · AoI amber (0..20s)',9,17);
 }
