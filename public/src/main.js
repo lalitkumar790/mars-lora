@@ -185,8 +185,13 @@ function controller(){
  const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
  lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-pos[0],desired[1]-pos[1]),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
   windForce:wind*(mjMass/1.2),clearance:clearance.distance,nearest:clearance.nearest,contacts:data.ncon,controlHz:50,collisionCount:lastDebug.collisionCount};
- if(mission && (clearance.warning || data.ncon>0) && data.time-lastWarning>1){
-   lastWarning=data.time;report('Obstacle proximity: '+clearance.nearest+' / clearance '+clearance.distance.toFixed(2)+' m; contacts '+data.ncon);
+ if(mission && (clearance.distance<.25 || data.ncon>0)){
+   mission=false;
+   desired=[pos[0],pos[1],Math.max(pos[2],transitAltitude)];
+   setMode('Safety hold — clearance breach');
+   report('Mission aborted: '+clearance.nearest+' clearance '+clearance.distance.toFixed(2)+' m; physical contacts '+data.ncon);
+ }else if(mission && clearance.warning && data.time-lastWarning>2){
+   lastWarning=data.time;report('Close approach: '+clearance.nearest+' clearance '+clearance.distance.toFixed(2)+' m');
  }
 }
 function appendLog(){
