@@ -6,7 +6,7 @@ on:
       - 'mujoco_sim/**'
       - '.github/workflows/mujoco-smoke.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   flight:
     runs-on: ubuntu-latest
@@ -31,6 +31,17 @@ jobs:
           PY
       - name: Validate full obstacle mission for both airframes
         run: python mujoco_sim/validate_mission.py --output results/flight-validation
+      - name: Publish verified flight traces to GitHub
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add results/flight.csv results/flight-validation
+          if ! git diff --cached --quiet; then
+            git commit -m 'results: validated MuJoCo two-airframe inspection mission [skip ci]'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: experimental-mujoco-flight-trace
