@@ -29,7 +29,11 @@ jobs:
               assert abs(float(row['z_m']))<100, 'Divergent flight trajectory'
           print('Frames:',len(rows),'last pose:',rows[-1])
           PY
+      - name: Validate full obstacle mission for both airframes
+        run: python mujoco_sim/validate_mission.py --output results/flight-validation
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: experimental-mujoco-flight-trace
-          path: results/flight.csv
+          path: |
+            results/flight.csv
+            results/flight-validation/*
