@@ -6,8 +6,6 @@ on:
     paths-ignore:
       - 'results/**'
       - 'paper/figures/**'
-      - 'public/*.png'
-      - 'public/results.json'
       - 'paper/paper.pdf'
 concurrency:
   group: mars-lora-publish-main
@@ -29,7 +27,7 @@ jobs:
       - name: Execute seeded trials
         run: python -m experiments.run --output results/raw --seeds 20
       - name: Render charts from data
-        run: python analysis/plot_results.py --input results/raw/summary.csv --output paper/figures --dashboard public
+        run: python analysis/plot_results.py --input results/raw/summary.csv --output paper/figures --dashboard results/dashboard-generated
       - name: Install manuscript build tools
         run: |
           sudo apt-get update -qq
@@ -45,7 +43,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add results/raw paper/figures public/*.png public/results.json paper/paper.pdf
+          git add results/raw paper/figures paper/paper.pdf
           if ! git diff --cached --quiet; then
             git commit -m 'results: verified seeded simulation and compiled manuscript [skip ci]'
             git fetch origin main
