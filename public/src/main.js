@@ -82,6 +82,15 @@ navlight.position.set(.13,0,.05);drone.add(navlight);scene.add(drone);
 const tracePoints=[];
 let traceLine=null;
 const traceMaterial=new THREE.LineBasicMaterial({color:0x55dcf2,transparent:true,opacity:.7});
+const plannedLine=new THREE.Line(
+ new THREE.BufferGeometry().setFromPoints(missionWaypoints.map(w=>new THREE.Vector3(...w))),
+ new THREE.LineDashedMaterial({color:0xeca85f,dashSize:.6,gapSize:.35,transparent:true,opacity:.75}));
+plannedLine.computeLineDistances();scene.add(plannedLine);
+const targetMarker=new THREE.Mesh(new THREE.SphereGeometry(.14,14,10),new THREE.MeshBasicMaterial({color:0xf5c26b}));
+scene.add(targetMarker);
+const velocityArrow=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0x43efd9,.28,.12);
+const thrustArrow=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(),1,0xffbd69,.3,.15);
+scene.add(velocityArrow,thrustArrow);
 const waypointObjects=[];
 const waypointPositions=missionWaypoints;
 for(let i=0;i<waypointPositions.length;i++){
@@ -92,7 +101,7 @@ for(let i=0;i<waypointPositions.length;i++){
 let airframe='heavy', mjMass=1.2, arm=.21, momentScale=1, modelThrustMax=15;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
-let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
+let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
 const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
 const simStep=.004;
@@ -158,12 +167,20 @@ function controller(){
  const my=momentScale*snap(.95*(pitchTarget-pitch)-.32*vel[4],-.55,.55);
  const a=arm, xy=[[a,a],[a,-a],[-a,-a],[-a,a]];
  for(let i=0;i<4;i++){
-  const [x,y]=xy[i];data.ctrl[i]=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,modelThrustMax);
+  const [x,y]=xy[i];
+  const demand=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,modelThrustMax);
+  // Approximate first-order electronic motor response: 60 ms time constant,
+  // updated at 50 Hz. Rotor RPM is NOT explicitly simulated.
+  rotorState[i]+=(1-Math.exp(-.02/.06))*(demand-rotorState[i]);
+  data.ctrl[i]=snap(rotorState[i],0,modelThrustMax);
  }
  // The free body has body id 1. External force applied at its COM.
  if(data.xfrc_applied?.length>=12){
-  data.xfrc_applied[6]=wind*(mjMass/1.2)*Math.sin(data.time*.6);
-  data.xfrc_applied[7]=wind*(mjMass/1.2)*Math.cos(data.time*.43);
+  // Force applied in world axes: wind disturbance + linear aero drag.
+  // Drag coefficient is an uncalibrated approximation, not CFD.
+  data.xfrc_applied[6]=wind*(mjMass/1.2)*Math.sin(data.time*.6)-.18*mjMass*vel[0];
+  data.xfrc_applied[7]=wind*(mjMass/1.2)*Math.cos(data.time*.43)-.18*mjMass*vel[1];
+  data.xfrc_applied[8]=-.12*mjMass*vel[2];
  }
  const clearance=obstacleClearance(pos[0],pos[1],pos[2],airframe==='crazyflie'?.08:.32);
  lastDebug={target:[...desired],positionError:Math.hypot(desired[0]-pos[0],desired[1]-pos[1]),altError:desired[2]-pos[2],thrust:t,tilt:Math.hypot(roll,pitch)*180/Math.PI,
@@ -261,6 +278,15 @@ function frame(now){
   const p=data.qpos;
   drone.position.set(p[0],p[1],p[2]);
   drone.quaternion.set(p[4],p[5],p[6],p[3]);
+  targetMarker.position.set(...lastDebug.target);
+  const velVec=new THREE.Vector3(data.qvel[0],data.qvel[1],data.qvel[2]);
+  const norm=Math.max(.001,velVec.length());
+  velocityArrow.position.set(p[0],p[1],p[2]);
+  velocityArrow.setDirection(velVec.multiplyScalar(1/norm));
+  velocityArrow.setLength(Math.max(.05,Math.min(2,norm*.6)),.2,.1);
+  thrustArrow.position.set(p[0],p[1],p[2]);
+  thrustArrow.setDirection(new THREE.Vector3(0,0,1).applyQuaternion(drone.quaternion).normalize());
+  thrustArrow.setLength(Math.max(.05,Math.min(2.2,lastDebug.thrust/(mjMass*9.81))),.24,.12);
   if(follow){
    const target=new THREE.Vector3(p[0],p[1],p[2]);
    const d=target.clone().sub(orbit.target);camera.position.addScaledVector(d,.08);orbit.target.lerp(target,.08);
@@ -286,7 +312,7 @@ on('mission',()=>{
 });
 on('pause',()=>{if(!ready)return;paused=!paused;$('pause').textContent=paused?'▶ Resume':'Ⅱ Pause';status(paused?'PAUSED':'PHYSICS ONLINE',paused?'#f0b764':'#63eda1');});
 on('camera',()=>{follow=!follow;report(follow?'Camera following UAV':'Free orbit camera');});
-on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);paused=false;accumulator=0;mission=false;desired=[0,0,.5];waypointIndex=0;flightLog=[];rotorState=[0,0,0,0];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -321,7 +347,7 @@ async function initialize(){
   mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
   drone.scale.setScalar(airframe==='crazyflie'?.23:1);
   mujoco.mj_forward(model,data);
-  ready=true;desired=[0,0,.5];controller();updateUI();
+  rotorState=[0,0,0,0];ready=true;desired=[0,0,.5];controller();updateUI();
   status('PHYSICS ONLINE');
   $('help').hidden=true;
   report('MuJoCo WebAssembly engine initialized, model compiled ('+model.nbody+' bodies).');
@@ -335,7 +361,7 @@ async function initialize(){
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
  paused=true;ready=false;airframe=e.target.value;
- mission=false;flightLog=[];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ mission=false;flightLog=[];rotorState=[0,0,0,0];debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
@@ -344,7 +370,7 @@ $('airframe').addEventListener('change',async e=>{
   mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;
   momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
   drone.scale.setScalar(airframe==='crazyflie'?.23:1);
-  mujoco.mj_forward(model,data);ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
+  mujoco.mj_forward(model,data);rotorState=[0,0,0,0];ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
   setMode('Standby');status('PHYSICS ONLINE');report('Loaded '+(airframe==='crazyflie'?'Crazyflie 2-derived 27 g':'Inspection 1.2 kg')+' airframe.');
  }catch(err){console.error(err);status('MODEL LOAD FAILED','#f87171');$('help').hidden=false;$('help').textContent=err.message;}
 });
