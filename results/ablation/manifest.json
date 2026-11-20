@@ -1,0 +1,29 @@
+{
+  "research_design": "full factorial 2x2x2 with shared seeded time-indexed fading",
+  "trials": 1440,
+  "seeds": 20,
+  "speed_mps": [
+    2,
+    5,
+    9
+  ],
+  "shadow_sigma_db": [
+    1,
+    4,
+    8
+  ],
+  "policy_factors": [
+    "adaptive SF",
+    "critical-first queue",
+    "20 percent conservative speed reduction"
+  ],
+  "constant_telemetry_interval_seconds": 2,
+  "wallclock_duration_seconds": 360,
+  "constraints": [
+    "synthetic raw LoRa",
+    "ideal SF receiver synchronization",
+    "not hardware-validated",
+    "kinematic trajectory",
+    "no regulatory duty cycle"
+  ]
+}
