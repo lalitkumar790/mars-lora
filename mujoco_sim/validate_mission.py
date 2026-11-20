@@ -45,7 +45,7 @@ def run(airframe,duration=240,wind=.25,out=None):
     desired=[0.,0.,.5]
     rotor=[0.,0.,0.,0.]
     idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
-    records=[]
+    records=[];cross_track=[]
     dt=model.opt.timestep
     steps=round(duration/dt)
     for k in range(steps):
@@ -59,11 +59,20 @@ def run(airframe,duration=240,wind=.25,out=None):
             if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(ROUTE)-1:
                 idx+=1
                 target=ROUTE[idx]
-            distance_xy=math.hypot(target[0]-p[0],target[1]-p[1])
+            # Match browser lookahead tracking: project current XY onto the
+            # segment, advance by 0.9m, and brake at each corner.
+            ax0,ay0=(0,0) if idx==0 else ROUTE[idx-1][:2]
+            dx,dy=target[0]-ax0,target[1]-ay0
+            L=math.hypot(dx,dy)
+            if L>1e-9:
+                ux,uy=dx/L,dy/L
+                along=clamp((p[0]-ax0)*ux+(p[1]-ay0)*uy,0,L)
+                lead=clamp(along+.9,0,L)
+                goalx,goaly=ax0+ux*lead,ay0+uy*lead
+            else:goalx,goaly=target[0],target[1]
             rising=target[2]>=7 and p[2]<6.65
-            scale=min(1.,.9/max(.1,distance_xy))
-            desired[0]=p[0] if rising else p[0]+(target[0]-p[0])*scale
-            desired[1]=p[1] if rising else p[1]+(target[1]-p[1])*scale
+            desired[0]=p[0] if rising else goalx
+            desired[1]=p[1] if rising else goaly
             desired[2]=target[2]
             ax=clamp(1.0*(desired[0]-p[0])-1.65*v[0],-1.2,1.2)
             ay=clamp(1.0*(desired[1]-p[1])-1.65*v[1],-1.2,1.2)
@@ -96,6 +105,7 @@ def run(airframe,duration=240,wind=.25,out=None):
             p=data.qpos;v=data.qvel
             err=math.sqrt(sum((desired[i]-p[i])**2 for i in range(3)))
             max_error=max(max_error,err)
+            cross_track.append(math.hypot(p[0]-desired[0],p[1]-desired[1]))
             records.append((round(float(data.time),4),*map(float,p[:3]),idx,clearance,data.ncon,tilt,err))
         if not all(math.isfinite(x) for x in data.qpos):
             raise RuntimeError("Non-finite MuJoCo pose")
@@ -109,7 +119,8 @@ def run(airframe,duration=240,wind=.25,out=None):
     return dict(airframe=airframe,completed=idx==len(ROUTE)-1 and math.dist(data.qpos[:3],ROUTE[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
-                max_tracking_error_m=round(max_error,2))
+                max_tracking_error_m=round(max_error,2),
+                xy_tracking_rms_m=round(math.sqrt(sum(x*x for x in cross_track)/max(1,len(cross_track))),3))
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--output",default="results/flight-validation")
