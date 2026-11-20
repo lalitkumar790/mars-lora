@@ -125,7 +125,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
             if not critical:last_sample=max(last_sample,made)
             if critical and busy_until<=deadline:alert_ok+=1
     return {
-        'policy':policy,'seed':seed,'gcs_x':gcs[0],'gcs_y':gcs[1],
+        'policy':policy,'seed':seed,'gcs_x':gcs[0],'gcs_y':gcs[1],'gcs_z':gcs[2],
         'shadow_sigma_db':shadow_sigma,'pdr':delivered/max(1,generated),
         'critical_deadline_ratio':alert_ok/max(1,alert_n),
         'aoi_p95_s':percentile(aoi,.95),'outage_fraction':mean(outage),
@@ -146,7 +146,7 @@ def main():
     rows=[]
     for vehicle in ('heavy','crazyflie'):
         trace=load_trajectory(Path(args.flight)/(vehicle+'.csv'))
-        for gcs in ((230.,220.,5.),(220.,-230.,5.)):
+        for gcs in ((230.,220.,5.),(230.,220.,120.)):
             for sigma in (4.,8.):
                 for seed in range(args.seeds):
                     for policy in ('fixed','adaptive','priority-adaptive'):
@@ -156,12 +156,12 @@ def main():
         w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
     summary=[]
     for vehicle in ('heavy','crazyflie'):
-        for gcs_y in (220.,-230.):
+        for gcs_z in (5.,120.):
             for sigma in (4.,8.):
                 for policy in ('fixed','adaptive','priority-adaptive'):
-                    xs=[r for r in rows if r['airframe']==vehicle and r['gcs_y']==gcs_y
+                    xs=[r for r in rows if r['airframe']==vehicle and r['gcs_z']==gcs_z
                         and r['shadow_sigma_db']==sigma and r['policy']==policy]
-                    result={'airframe':vehicle,'gcs_y':gcs_y,'shadow_sigma_db':sigma,'policy':policy,'n':len(xs)}
+                    result={'airframe':vehicle,'gcs_z':gcs_z,'shadow_sigma_db':sigma,'policy':policy,'n':len(xs)}
                     for metric in ('pdr','critical_deadline_ratio','aoi_p95_s','outage_fraction','nlos_fraction','tx_energy_j','mission_duration_s'):
                         vals=[x[metric] for x in xs]
                         result[metric+'_mean']=mean(vals)
@@ -172,7 +172,7 @@ def main():
     (out/'manifest.json').write_text(json.dumps({
         'method':'Actual MuJoCo CSV replay -> 3D ray/AABB obstruction -> seeded raw-LoRa events',
         'trial_count':len(rows),'seed_count':args.seeds,
-        'gcs_positions_m':[(230,220,5),(220,-230,5)],'shadow_sigma_db':[4,8],
+        'gcs_positions_m':[(230,220,5),(230,220,120)],'shadow_sigma_db':[4,8],
         'policies':['fixed','adaptive','priority-adaptive'],
         'limitations':['synthetic path-loss and shadow','3D AABB blockage not measured RF',
           'no physical radio','receiver SF handshakes idealized as 0.5 s',
