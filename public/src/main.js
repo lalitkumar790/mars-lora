@@ -143,7 +143,7 @@ function controller(){
  const [roll,pitch,yaw]=quatToRPY([pos[3],pos[4],pos[5],pos[6]]);
  // GPS-denied guidance uses only the estimated SLAM XY pose, never MuJoCo XY.
  // Roll, pitch and yaw feedback remain simulated IMU/attitude measurements.
- const navSlam=$('navSource').value==='slam' && slam.initialized;
+ const navSlam=$('navSource').value==='slam';
  const nx=navSlam?slam.pose.x:pos[0],ny=navSlam?slam.pose.y:pos[1];
  if(mission){
  const wp=waypointPositions[waypointIndex],delta=[wp[0]-nx,wp[1]-ny,wp[2]-pos[2]];
