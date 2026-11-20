@@ -55,3 +55,13 @@ The MuJoCo browser scene is a purpose-built compact testbed and is not yet the i
 
 ## License
 Code: MIT (see LICENSE). Third-party drone models retain their original licenses and are **not vendored** into this repository.
+
+## Multi-airframe MuJoCo flight console (November 2026)
+- Airframe selector: original 1.2 kg inspection quad or a **27 g Crazyflie 2-derived** dynamics model. Real MuJoCo free-body integration and four independent rotor forces are applied in either case, with distinct thrust limits, rotor arms, mass and moments of inertia.
+- Crazyflie physical parameters sourced from [Google DeepMind MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/bitcraze_crazyflie_2) (upstream MIT copyright preserved under `mujoco_sim/reference/`). The source model needs its original OBJ meshes; the Vercel variant is a browser-compatible primitive reconstruction, **not** an identical imported mesh model.
+- Shared industrial site: three buildings, container, transmission mast, pylon and overhead beam with MuJoCo contacts. 3D scene rendering is separate from but geometrically aligned with the physical static colliders. Extra distant visualization tanks are only scenery and have **no collision shape**.
+- Browser telemetry includes airframe pose, speed, rotor thrust, waypoint status, and an **interactive approximate raw-LoRa link** showing RSSI, information freshness and packet delivery. The packet simulation depends on the drone's current physics state but remains a simplified, seedable stochastic model; SF synchronization, collision and regulatory constraints are idealized. No research figures or static trial results are deployed on Vercel.
+- Headless Chromium CI tests physics initialization, takeoff, waypoint activation, pause/reset, airframe switching and live critical-alert injection.
+
+## Controlled research ablation
+Use `python -m experiments.ablation --seeds 20 --output results/ablation` for eight policy combinations with identical telemetry generation rates and common seeded time-indexed fading. Toggle adaptive SF (A), critical packet priority (P), and conservative slowdown (S) independently. GitHub Actions `.github/workflows/ablation.yml` publishes 1,440 synthetic trial logs and summaries to `results/ablation`; nothing from these files is hosted by Vercel. Manuscript includes descriptive table; no hardware validation or demonstrated safety claims.
