@@ -10,12 +10,13 @@ try {
  await page.locator('#navSource').selectOption('slam');
  await page.waitForFunction(() => Number(document.querySelector('#slamScans')?.textContent||'0')>=2, null, {timeout:20000});
  const initial = parseFloat(await page.locator('#altitude').innerText());
+ const t0 = parseFloat(await page.locator('#time').innerText());
  await page.locator('#takeoff').click();
  await page.waitForTimeout(4000);
  await page.waitForFunction(() => Number((document.querySelector('#scanBeams')?.textContent||'0/0').split('/')[0])>0, null, {timeout:15000});
  const altitude = parseFloat(await page.locator('#altitude').innerText());
  const time = parseFloat(await page.locator('#time').innerText());
- if (!(altitude > initial+.2 && altitude < 15 && time >= 1.1)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
+ if (!(altitude > initial+.2 && altitude < 15 && time >= t0+.45)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#missionType').selectOption('mapping');
  await page.locator('#mission').click();
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
