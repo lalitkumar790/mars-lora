@@ -50,3 +50,13 @@ export function plannedPathClearance(points=missionWaypoints,radius=.25) {
  }
  return min;
 }
+
+/** GPS-denied planar-LiDAR mapping exercise at 3.2m.
+ * Deliberately avoids overhanging western roof and antenna pylon while
+ * passing close enough to see vertical features in the horizontal scan.
+ */
+export const mappingWaypoints=[
+ [0,0,3.2],[0,-7,3.2],[-9.5,-7,3.2],
+ [-9.5,7,3.2],[-7,7,3.2],[-9.5,7,3.2],
+ [-9.5,-7,3.2],[0,-7,3.2],[0,0,3.2]
+];
