@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'public/**'
+      - 'ros2_bridge/slam_replay.py'
       - '.github/workflows/browser-flight.yml'
 permissions:
   contents: read
@@ -20,6 +21,8 @@ jobs:
           cd public
           npm install
           npx playwright install --with-deps chromium
+      - name: Syntax-check optional ROS 2 replay adapter
+        run: python3 -m py_compile ros2_bridge/slam_replay.py
       - name: Verify mission clearance regression
         run: cd public && node tests/mission-safety.mjs
       - name: Check GPS-denied scan mapping invariants
