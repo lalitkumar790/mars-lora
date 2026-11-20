@@ -16,7 +16,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <div class="logo">◉ MARS / FLIGHT LAB</div>
 <div class="subtitle">MuJoCo WebAssembly · quadrotor dynamics</div>
 <h1>Flight operations</h1>
-<label class="field" for="airframe">Airframe and calibrated inertia</label><select id="airframe"><option value="heavy">Inspection quad · 1.2 kg</option><option value="crazyflie">Crazyflie 2 derived · 27 g</option></select>
+<label class="field" for="airframe">Airframe and calibrated inertia</label><select id="airframe"><option value="heavy">Skydio X2 CAD · 1.325 kg</option><option value="crazyflie">Crazyflie 2 original CAD · 27 g</option></select>
 <p>Switching airframes recompiles the MuJoCo model and resets the mission.</p>
 <section class="controls">
 <button class="primary" id="takeoff">↑ Take off</button>
@@ -47,6 +47,10 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <div class="metric"><div class="k">Scan corrections</div><div class="v" id="slamCorrections">0</div></div>
 </div>
 <p>*Drift is calculated using simulator truth for research evaluation only and never supplied to the SLAM pose estimator.</p>
+<h2>Urban test environment</h2>
+<p id="cityStats">Loading city geometry…</p>
+<section class="controls"><button id="cityCamera" class="full">⌾ City overview camera</button></section>
+<p>Urban canyon buildings and roads are procedurally generated with a fixed seed. Buildings have matching physical MuJoCo colliders. This is a city-scale research scene, not a georeferenced OpenStreetMap digital twin.</p>
 <h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam with MuJoCo collision geometry. Mission planner first climbs to a 7 m transit corridor above the tallest structure, then follows elevated waypoints and returns to base.</p>
 <label class="field" for="wind">Horizontal wind disturbance</label>
 <div class="rowfield"><input id="wind" type="range" min="0" max="3" step=".25" value=".25"><span id="windval" class="value">0.25 N</span></div>
@@ -96,6 +100,9 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <p id="rfParams"></p>
 <h2>Research evaluation parameters</h2>
 <p><b>Link:</b> delivery ratio, critical deadline ratio, AoI, estimated RSSI / SF,  packet airtime and queue. <b>Flight:</b> trajectory error, safety clearance, contacts, mission time, thrust and disturbance response. These live exploratory values are distinct from GitHub's seeded experiments and are not publication-grade calibrated RF measurements.</p>
+<h2>LiDAR obstacle detection</h2>
+<p id="obstacleStatus">Waiting for first MuJoCo rangefinder scan.</p>
+<p>32 horizontal beams for SLAM and 32 downward-canted beams for rooftops. A frontal hazard triggers hover and requires manual replanning; ground-truth collision monitoring remains a separate evaluation safeguard.</p>
 <h2>Occupancy SLAM map</h2>
 <canvas id="slamMap" width="440" height="320" aria-label="Incrementally generated occupancy map using simulated LiDAR returns" style="width:100%;height:215px;border:1px solid #263e55;border-radius:9px"></canvas>
 <p id="slamStatus">Waiting for first scan. At 7 m, a horizontal 2D LiDAR may see few obstacles below its scan plane; this limits GPS-denied localization.</p>
