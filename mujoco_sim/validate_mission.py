@@ -1,0 +1,123 @@
+"""Full mission validation for browser MJCF airframes using actual MuJoCo physics.
+
+This mirrors the browser controller's principal control law. It is NOT a
+bit-for-bit browser execution nor a proof of flight safety.
+"""
+from __future__ import annotations
+import argparse
+import csv
+import json
+import math
+from pathlib import Path
+import mujoco
+
+ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
+OBSTACLES=[
+ ("east",5,4,1.4,1.1,1.4,1.4),("west",-5,5,1.9,1.25,1.1,1.9),
+ ("south",5,-4,1.6,1.4,1,1.6),("container",-3,-4,.6,2,.7,.6),
+ ("tower",1,8,2.5,.24,.24,2.5),("pylon",-8,0,2.7,.32,.32,2.7),
+ ("beam",-5,0,5.45,3.3,.24,.23)
+]
+def signed_clearance(p,radius):
+    best=1e6
+    for _,x,y,z,hx,hy,hz in OBSTACLES:
+        d=[abs(p[0]-x)-hx,abs(p[1]-y)-hy,abs(p[2]-z)-hz]
+        outside=math.sqrt(sum(max(v,0)**2 for v in d))
+        dist=-min(-v for v in d) if all(v<=0 for v in d) else outside
+        best=min(best,dist-radius)
+    return best
+def clamp(x,a,b):
+    return max(a,min(b,x))
+def quat_to_rpy(q):
+    w,x,y,z=q
+    return (math.atan2(2*(w*x+y*z),1-2*(x*x+y*y)),
+            math.asin(clamp(2*(w*y-z*x),-1,1)),
+            math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
+def run(airframe,duration=240,wind=.25,out=None):
+    root=Path(__file__).resolve().parents[1]
+    model=mujoco.MjModel.from_xml_path(str(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")))
+    data=mujoco.MjData(model)
+    mujoco.mj_forward(model,data)
+    mass=.027 if airframe=="crazyflie" else 1.2
+    arm=.046 if airframe=="crazyflie" else .21
+    moment_scale=2.3951e-5/.019 if airframe=="crazyflie" else 1.
+    max_thrust=.15 if airframe=="crazyflie" else 15.
+    desired=[0.,0.,.5]
+    rotor=[0.,0.,0.,0.]
+    idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
+    records=[]
+    dt=model.opt.timestep
+    steps=round(duration/dt)
+    for k in range(steps):
+        t=float(data.time)
+        p=data.qpos;v=data.qvel
+        if k%5==0:
+            roll,pitch,yaw=quat_to_rpy(p[3:7])
+            target=ROUTE[idx]
+            delta=[target[i]-p[i] for i in range(3)]
+            speed3=math.sqrt(sum(v[i]*v[i] for i in range(3)))
+            if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(ROUTE)-1:
+                idx+=1
+                target=ROUTE[idx]
+            distance_xy=math.hypot(target[0]-p[0],target[1]-p[1])
+            rising=target[2]>=7 and p[2]<6.65
+            scale=min(1.,.9/max(.1,distance_xy))
+            desired[0]=p[0] if rising else p[0]+(target[0]-p[0])*scale
+            desired[1]=p[1] if rising else p[1]+(target[1]-p[1])*scale
+            desired[2]=target[2]
+            ax=clamp(1.0*(desired[0]-p[0])-1.65*v[0],-1.2,1.2)
+            ay=clamp(1.0*(desired[1]-p[1])-1.65*v[1],-1.2,1.2)
+            bx=math.cos(yaw)*ax+math.sin(yaw)*ay
+            by=-math.sin(yaw)*ax+math.cos(yaw)*ay
+            rt=clamp(-by/9.81,-.16,.16)
+            pt=clamp(bx/9.81,-.16,.16)
+            tilt_factor=max(.8,math.cos(roll)*math.cos(pitch))
+            force=mass*clamp((9.81+3*(desired[2]-p[2])-2.9*v[2])/tilt_factor,1,18)
+            mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
+            my=moment_scale*clamp(.95*(pt-pitch)-.32*v[4],-.55,.55)
+            a=arm
+            for i,(x,y) in enumerate(((a,a),(a,-a),(-a,-a),(-a,a))):
+                demand=clamp(force/4+mx*y/(4*a*a)-my*x/(4*a*a),0,max_thrust)
+                rotor[i]+=(1-math.exp(-.02/.06))*(demand-rotor[i])
+                data.ctrl[i]=clamp(rotor[i],0,max_thrust)
+            data.xfrc_applied[6]=wind*(mass/1.2)*math.sin(t*.6)-.18*mass*v[0]
+            data.xfrc_applied[7]=wind*(mass/1.2)*math.cos(t*.43)-.18*mass*v[1]
+            data.xfrc_applied[8]=-.12*mass*v[2]
+            tilt=math.degrees(math.hypot(roll,pitch))
+            max_tilt=max(max_tilt,tilt)
+        mujoco.mj_step(model,data)
+        if k%25==0:
+            p=data.qpos;v=data.qvel
+            clearance=signed_clearance(p[:3],.08 if airframe=="crazyflie" else .32)
+            minimum=min(minimum,clearance)
+            contacts+=int(data.ncon>0)
+            err=math.sqrt(sum((desired[i]-p[i])**2 for i in range(3)))
+            max_error=max(max_error,err)
+            records.append((round(float(data.time),4),*map(float,p[:3]),idx,clearance,data.ncon,tilt,err))
+        if not all(math.isfinite(x) for x in data.qpos):
+            raise RuntimeError("Non-finite MuJoCo pose")
+        if idx==len(ROUTE)-1 and math.dist(p[:3],ROUTE[-1])<.5 and math.sqrt(sum(x*x for x in v[:3]))<.65:
+            break
+    if out:
+        file=Path(out);file.parent.mkdir(parents=True,exist_ok=True)
+        with file.open("w",newline="") as f:
+            writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
+            writer.writerows(records)
+    return dict(airframe=airframe,completed=idx==len(ROUTE)-1 and math.dist(data.qpos[:3],ROUTE[-1])<.5,
+                elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
+                min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
+                max_tracking_error_m=round(max_error,2))
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument("--output",default="results/flight-validation")
+    args=p.parse_args()
+    results=[]
+    for name in ("heavy","crazyflie"):
+        outcome=run(name,out=f"{args.output}/{name}.csv")
+        print(json.dumps(outcome))
+        results.append(outcome)
+        if not outcome["completed"] or outcome["min_clearance_m"]<.1 or outcome["contact_samples"]>0:
+            raise SystemExit("Full mission failed validation: "+str(outcome))
+    Path(args.output,"summary.json").write_text(json.dumps(results,indent=2)+"\n")
+if __name__=="__main__":
+    main()
