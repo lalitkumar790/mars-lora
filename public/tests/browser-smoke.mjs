@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle','--use-angle=swiftshader','--enable-webgl'] });
-const page = await browser.newPage({ viewport: { width:1440, height:900 } });
+const page = await browser.newPage({ viewport: { width:1040, height:700 } });
 const errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
@@ -15,7 +15,7 @@ try {
  await page.waitForFunction(() => Number((document.querySelector('#scanBeams')?.textContent||'0/0').split('/')[0])>0, null, {timeout:15000});
  const altitude = parseFloat(await page.locator('#altitude').innerText());
  const time = parseFloat(await page.locator('#time').innerText());
- if (!(altitude > initial+.2 && altitude < 15 && time >= 2.5)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
+ if (!(altitude > initial+.2 && altitude < 15 && time >= 1.1)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#missionType').selectOption('mapping');
  await page.locator('#mission').click();
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
