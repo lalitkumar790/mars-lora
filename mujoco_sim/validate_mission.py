@@ -10,6 +10,9 @@ import json
 import math
 from pathlib import Path
 import mujoco
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from mars_lora.urban_scene import add_city_mjcf
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -35,7 +38,8 @@ def quat_to_rpy(q):
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
 def run(airframe,duration=240,wind=.25,out=None):
     root=Path(__file__).resolve().parents[1]
-    model=mujoco.MjModel.from_xml_path(str(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")))
+    xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
+    model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml))
     data=mujoco.MjData(model)
     mujoco.mj_forward(model,data)
     mass=.027 if airframe=="crazyflie" else 1.325
