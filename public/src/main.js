@@ -22,8 +22,8 @@ const camera = new THREE.PerspectiveCamera(52, 1, .03, 150);
 camera.up.set(0, 0, 1);
 camera.position.set(8, -12, 9);
 const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.shadowMap.enabled = !navigator.webdriver;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 $('viewport').appendChild(renderer.domElement);
 const orbit = new OrbitControls(camera, renderer.domElement);
@@ -353,11 +353,11 @@ function resize(){
 new ResizeObserver(resize).observe($('viewport'));
 function frame(now){
  requestAnimationFrame(frame);
- const elapsed=Math.min(.05,(now-lastFrame)/1000);lastFrame=now;
+ const elapsed=Math.min(.2,(now-lastFrame)/1000);lastFrame=now;
  if(ready&&!paused){
-  accumulator=Math.min(.08,accumulator+elapsed);
+  accumulator=Math.min(.2,accumulator+elapsed);
   let steps=0;
-  while(accumulator>=simStep&&steps<24){
+  while(accumulator>=simStep&&steps<50){
    if(Math.floor(data.time/.02)!==Math.floor((data.time+simStep)/.02))controller();
    mujoco.mj_step(model,data);
    accumulator-=simStep;steps++;
