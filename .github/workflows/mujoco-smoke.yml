@@ -1,0 +1,35 @@
+name: MuJoCo experimental flight smoke test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mujoco_sim/**'
+      - '.github/workflows/mujoco-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  flight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11'
+      - name: Install MuJoCo
+        run: python -m pip install mujoco==3.3.2
+      - name: Simulate five seconds and validate finite pose
+        run: |
+          python mujoco_sim/fly.py --seconds 5 --output results/flight.csv
+          python - <<'PY'
+          import csv, math
+          rows=list(csv.DictReader(open('results/flight.csv')))
+          assert len(rows)>20, 'Insufficient simulated frames'
+          for row in rows:
+              assert all(math.isfinite(float(row[k])) for k in ('x_m','y_m','z_m')), row
+              assert abs(float(row['z_m']))<100, 'Divergent flight trajectory'
+          print('Frames:',len(rows),'last pose:',rows[-1])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: experimental-mujoco-flight-trace
+          path: results/flight.csv
