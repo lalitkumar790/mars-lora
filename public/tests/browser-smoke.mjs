@@ -1,0 +1,29 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle','--use-angle=swiftshader','--enable-webgl'] });
+const page = await browser.newPage({ viewport: { width:1440, height:900 } });
+const errors=[];
+page.on('pageerror',e=>errors.push(e.message));
+page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+try {
+ await page.goto('http://127.0.0.1:5173/', {waitUntil:'domcontentloaded',timeout:45000});
+ await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:50000});
+ const initial = parseFloat(await page.locator('#altitude').innerText());
+ await page.locator('#takeoff').click();
+ await page.waitForTimeout(4000);
+ const altitude = parseFloat(await page.locator('#altitude').innerText());
+ const time = parseFloat(await page.locator('#time').innerText());
+ if (!(altitude > initial+.2 && altitude < 15 && time > 2)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
+ await page.locator('#mission').click();
+ await page.waitForTimeout(500);
+ if (!(await page.locator('#waypoints').innerText()).includes('Active waypoint')) throw new Error('Waypoint mission did not activate');
+ await page.locator('#pause').click();
+ if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
+ await page.locator('#reset').click();
+ if (!(await page.locator('#status').innerText()).includes('PHYSICS ONLINE')) throw new Error('Reset failed');
+ if(errors.length)throw new Error('Browser errors: '+errors.join('\n'));
+ console.log('PASS: MuJoCo in Chromium; takeoff altitude '+initial+'m -> '+altitude+'m; sim time '+time+'s; mission, pause, reset.');
+} catch(error) {
+ await page.screenshot({path:'browser-failure.png',fullPage:true});
+ console.error('BROWSER SMOKE FAILED',error.message,'\nConsole:',errors.join('\n'));
+ process.exitCode=1;
+} finally {await browser.close();}
