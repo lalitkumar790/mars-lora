@@ -79,10 +79,25 @@ We separately evaluated the browser-model MJCF quadrotors in native MuJoCo under
 \caption{MuJoCo physics validation; one deterministic mission per vehicle. Contact is checked at every 4-ms physics step. No repeated-seed generalization is claimed.}\label{tab:flight}
 \begin{tabular}{lrrr}\toprule
 Airframe & Completion (s) & Min. clearance (m) & Contact steps\\\midrule
-1.2-kg quad & 90.57 & 1.00 & 0\\
-27-g Crazyflie-like & 90.57 & 1.24 & 0\\
+1.325-kg X2-like & 90.57 & 1.00 & 0\\
+27-g Crazyflie-like & 105.35 & 1.24 & 0\\
 \bottomrule\end{tabular}\end{table}
 Both vehicles completed all seven waypoints, with maximum observed body tilt about $6.6^\circ$ under the normalized controller. Their identical completion times stem partly from using the same commanded accelerations and normalized dynamics; this should not be interpreted as field performance equivalence. A full uncertainty study under random wind, actuator mismatch, sensory delays and multiple obstacle layouts is necessary before asserting robust collision avoidance.
+\section{Coupled Flight--Communication Replay}
+We next replace the radio-only experiment's prescribed kinematic path with time-stamped poses actually integrated by native MuJoCo for both airframes. A deterministic set of industrial obstacles and 72 generated urban structures is shared with the LoRa propagation proxy. For every sampled UAV-to-receiver segment, a 3-D axis-aligned ray intersection assigns 17 dB excess loss to obstructed links. Both receiver placements lie at $(230,220)$ m, with heights 5 m (ground GCS) or 120 m (elevated relay), producing all-NLOS and mixed-LOS/NLOS episodes, respectively. We combine two airframes, two receivers, two Gaussian shadow levels ($\sigma=4,8$ dB), 20 seeds and three scheduling policies for 480 controlled radio replays. All policies share the same executed flight trace, message generation times and seeded fading; this is physics-conditioned radio evaluation, not yet online RF-aware trajectory adjustment.
+\begin{table}[t]\centering\caption{MuJoCo-conditioned raw-LoRa trial means for the 1.325-kg vehicle at 4 dB shadowing ($n=20$ per cell). TX J denotes the proxy $0.12 \sum T_{air}$, not measured transceiver consumption.}\label{tab:crosslayer}
+\begin{tabular}{llrrrr}\toprule
+Receiver & Radio policy & Delivery & Alert on time & P95 AoI & TX J\\\midrule
+Ground & Fixed SF9 & .152 & .217 & 36.86 & 1.08\\
+Ground & Adaptive SF & .545 & .467 & 13.44 & 5.82\\
+Elevated & Fixed SF9 & .456 & .383 & 26.92 & 1.08\\
+Elevated & Adaptive SF & .480 & .400 & 28.98 & 2.14\\
+\bottomrule\end{tabular}\end{table}
+The demonstrated benefit is conditional on channel geometry: under the fully shadowed ground receiver, SF adaptation greatly improves delivery and freshness but increases radio airtime and the estimated energy proxy about fivefold. At the mixed-LOS/NLOS elevated receiver, adaptation yields a smaller mean delivery gain and a worse mean P95 AoI. A single globally superior policy is not observed. Priority scheduling offers relatively small additional changes with three alerts per approximately 90-s run, so confidence intervals and longer matched tasks are essential before inferring critical-message benefit.
+\begin{figure}[t]\centering
+\IfFileExists{figures/crosslayer_policies.pdf}{\includegraphics[width=\linewidth]{figures/crosslayer_policies.pdf}}{\fbox{Cross-layer figure pending verified CI run}}
+\caption{Reproducible MuJoCo--LoRa policy tradeoffs across urban receiver geometry (4 dB shadowing); generated directly from saved trial CSV.}\end{figure}
+Importantly, these simulations still use simplified AABB obstruction, assumed sensitivity thresholds, and stylized SF synchronization. Physics-derived trajectories do not themselves validate propagation. GPS-denied pose estimates have not yet been used to optimize RF-aware flight decisions in this controlled benchmark.
 \section{Limitations and Deployment}
 The channel omits actual radio measurements, antenna orientation, real packet collisions, regulatory duty-cycle scheduling, and control-plane SF handshakes. The principal LoRa experiments still use kinematic routes; a separate single-run MuJoCo inspection test demonstrates feasibility of one collision-free physics trajectory, not general obstacle avoidance or actuator reliability. A global slowdown is not predictive mobility adaptation. Accordingly, results are hypothesis-generating simulation outcomes, not field evidence. Future validation should compare channel predictions with ns-3 or measured LoRa logs, replay time-aligned MuJoCo poses, and integrate ROS 2 flight autonomy.
 \section{Conclusion}
