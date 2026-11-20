@@ -1,4 +1,5 @@
 import quadXML from '../quad.xml?raw';
+import crazyflieXML from '../crazyflie.xml?raw';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import loadMujoco from '@mujoco/mujoco';
@@ -39,7 +40,10 @@ function box(x,y,z,sx,sy,sz,color) {
  const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),new THREE.MeshStandardMaterial({color,metalness:.25,roughness:.65}));
  m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;scene.add(m);return m;
 }
-for (const v of [[5,4,1.4,2.2,2.8,2.8,0x556e83],[-5,5,1.9,2.5,2.2,3.8,0x657084],[5,-4,1.6,2.8,2,3.2,0x567689]])box(...v);
+for (const v of [[5,4,1.4,2.2,2.8,2.8,0x556e83],[-5,5,1.9,2.5,2.2,3.8,0x657084],[5,-4,1.6,2.8,2,3.2,0x567689],[-3,-4,.6,4,1.4,1.2,0xa65a3e],[-8,0,2.7,.64,.64,5.4,0x687891],[-5,0,5.45,6.6,.48,.46,0x788696]])box(...v);
+const tower=new THREE.Mesh(new THREE.CylinderGeometry(.24,.24,5,14),new THREE.MeshStandardMaterial({color:0x697e89,metalness:.65,roughness:.45}));
+tower.position.set(1,8,2.5);tower.rotation.x=Math.PI/2;tower.castShadow=true;scene.add(tower);
+for(let i=0;i<3;i++){const tank=new THREE.Mesh(new THREE.CylinderGeometry(.5,.5,1.5,24),new THREE.MeshStandardMaterial({color:0x536f80,metalness:.3}));tank.position.set(-10+i*1.3,-8,.75);tank.rotation.x=Math.PI/2;scene.add(tank);}
 const station=box(0,-2,.28,.38,.4,.56,0x47d9b1);
 const beacon=new THREE.PointLight(0x5cebbd,3,7);
 beacon.position.copy(station.position).add(new THREE.Vector3(0,0,.8));scene.add(beacon);
@@ -83,6 +87,7 @@ for(let i=0;i<waypointPositions.length;i++){
  const marker=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));
  marker.position.set(x,y,z);scene.add(marker);waypointObjects.push(marker);
 }
+let airframe='heavy', mjMass=1.2, arm=.21, momentScale=1, modelThrustMax=15;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
 const simStep=.004;
@@ -133,17 +138,17 @@ function controller(){
  const ay=snap(1.1*(desired[1]-pos[1])-1.4*vel[1],-1.5,1.5);
  const rollTarget=snap(-ay/9.81,-.2,.2);
  const pitchTarget=snap(ax/9.81,-.2,.2);
- const t=1.2*snap(9.81+3.0*(desired[2]-pos[2])-2.2*vel[2],1,18);
- const mx=snap(1.1*(rollTarget-roll)-.22*vel[3],-.6,.6);
- const my=snap(1.1*(pitchTarget-pitch)-.22*vel[4],-.6,.6);
- const a=.21, xy=[[a,a],[a,-a],[-a,-a],[-a,a]];
+ const t=mjMass*snap(9.81+3.0*(desired[2]-pos[2])-2.2*vel[2],1,18);
+ const mx=momentScale*snap(1.1*(rollTarget-roll)-.22*vel[3],-.6,.6);
+ const my=momentScale*snap(1.1*(pitchTarget-pitch)-.22*vel[4],-.6,.6);
+ const a=arm, xy=[[a,a],[a,-a],[-a,-a],[-a,a]];
  for(let i=0;i<4;i++){
-  const [x,y]=xy[i];data.ctrl[i]=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,15);
+  const [x,y]=xy[i];data.ctrl[i]=snap(t/4+mx*y/(4*a*a)-my*x/(4*a*a),0,modelThrustMax);
  }
  // The free body has body id 1. External force applied at its COM.
  if(data.xfrc_applied?.length>=12){
-  data.xfrc_applied[6]=wind*Math.sin(data.time*.6);
-  data.xfrc_applied[7]=wind*Math.cos(data.time*.43);
+  data.xfrc_applied[6]=wind*(mjMass/1.2)*Math.sin(data.time*.6);
+  data.xfrc_applied[7]=wind*(mjMass/1.2)*Math.cos(data.time*.43);
  }
 }
 function appendLog(){
@@ -247,10 +252,12 @@ async function initialize(){
  try{
   status('LOADING MUJOCO WASM','#f0b764');
   mujoco=await loadMujoco({locateFile:file=>file.endsWith('.wasm')?wasmUrl:file});
-  const xml=quadXML;
+  const xml=airframe==='crazyflie'?crazyflieXML:quadXML;
   model=mujoco.MjModel.from_xml_string(xml);
   if(!model)throw Error('MuJoCo MJCF compilation returned no model');
   data=new mujoco.MjData(model);
+  mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
+  drone.scale.setScalar(airframe==='crazyflie'?.23:1);
   mujoco.mj_forward(model,data);
   ready=true;desired=[0,0,.5];controller();updateUI();
   status('PHYSICS ONLINE');
@@ -263,4 +270,20 @@ async function initialize(){
   report('Initialization error: '+error.message);
  }
 }
+$('airframe').addEventListener('change',async e=>{
+ if(!mujoco)return;
+ paused=true;ready=false;airframe=e.target.value;
+ mission=false;flightLog=[];tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
+ status('RECOMPILING AIRFRAME','#f0b764');
+ try{
+  model=mujoco.MjModel.from_xml_string(airframe==='crazyflie'?crazyflieXML:quadXML);
+  data=new mujoco.MjData(model);
+  mjMass=airframe==='crazyflie'?.027:1.2;arm=airframe==='crazyflie'?.046:.21;
+  momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;modelThrustMax=airframe==='crazyflie'?.15:15;
+  drone.scale.setScalar(airframe==='crazyflie'?.23:1);
+  mujoco.mj_forward(model,data);ready=true;paused=false;desired=[0,0,.5];controller();updateUI();
+  setMode('Standby');status('PHYSICS ONLINE');report('Loaded '+(airframe==='crazyflie'?'Crazyflie 2-derived 27 g':'Inspection 1.2 kg')+' airframe.');
+ }catch(err){console.error(err);status('MODEL LOAD FAILED','#f87171');$('help').hidden=false;$('help').textContent=err.message;}
+});
 initialize();
