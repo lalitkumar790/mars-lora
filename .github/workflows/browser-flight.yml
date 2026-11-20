@@ -29,6 +29,8 @@ jobs:
         run: cd public && node tests/slam-safety.mjs
       - name: Validate urban scene, path tracking and sensor obstacle guard
         run: cd public && node tests/city-navigation.mjs
+      - name: Verify online 3D LoRa-aware A* route generation
+        run: cd public && node tests/rf-planner.mjs
       - name: Validate Vite production bundle
         run: cd public && npm run build
       - name: Start site and exercise flight controls
