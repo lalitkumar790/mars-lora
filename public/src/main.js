@@ -199,7 +199,7 @@ function frame(now){
   }
   if(data.time-lastRadio>=.5){
     lastRadio=data.time;
-    radio.tick(data.time,[data.qpos[0],data.qpos[1],data.qpos[2]],$('radioMode').value,2);
+    radio.tick(data.time,[data.qpos[0],data.qpos[1],data.qpos[2]],$('radioMode').value,2,Number($('sf').value.slice(2)));
   }
   if(data.time-lastLog>.1){lastLog=data.time;appendLog();}
   if(data.time-lastTrace>.15){
