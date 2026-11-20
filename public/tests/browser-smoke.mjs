@@ -7,7 +7,7 @@ page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
 try {
  await page.goto('http://127.0.0.1:5173/', {waitUntil:'domcontentloaded',timeout:45000});
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:50000});
- await page.waitForFunction(() => document.querySelector('#events')?.textContent.includes('Loaded original Skydio X2 CAD mesh'), null, {timeout:30000});
+ await page.waitForFunction(() => document.querySelector('#cadState')?.textContent.includes('CAD READY'), null, {timeout:45000});
  await page.locator('#navSource').selectOption('slam');
  await page.waitForFunction(() => Number(document.querySelector('#slamScans')?.textContent||'0')>=2, null, {timeout:20000});
  const initial = parseFloat(await page.locator('#altitude').innerText());
@@ -29,7 +29,7 @@ try {
  if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
  await page.locator('#airframe').selectOption('crazyflie');
  await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:25000});
- await page.waitForFunction(() => document.querySelector('#events')?.textContent.includes('Loaded original Crazyflie 2 CAD mesh'), null, {timeout:30000});
+ await page.waitForFunction(() => document.querySelector('#cadState')?.textContent.includes('CAD READY: original Crazyflie 2'), null, {timeout:45000});
  const cfInitial=parseFloat(await page.locator('#altitude').innerText());
  await page.locator('#takeoff').click();
  await page.waitForFunction((initial) => parseFloat(document.querySelector('#altitude')?.textContent||'0') > initial + .2, cfInitial, { timeout:25000 });
@@ -43,6 +43,6 @@ try {
  console.log('PASS: MuJoCo in Chromium; takeoff altitude '+initial+'m -> '+altitude+'m; sim time '+time+'s; mission, pause, reset.');
 } catch(error) {
  await page.screenshot({path:'browser-failure.png',fullPage:true});
- console.error('BROWSER SMOKE FAILED',error.message,'\nConsole:',errors.join('\n'));
+ console.error('BROWSER SMOKE FAILED',error.message,'\nCAD:',await page.locator('#cadState').textContent().catch(()=>'<missing>'),'\nEvents:',(await page.locator('#events').textContent().catch(()=>'<missing>')).slice(0,1300),'\nConsole:',errors.join('\n'));
  process.exitCode=1;
 } finally {await browser.close();}
