@@ -10,6 +10,18 @@ LoRa enables long-range low-rate robotic telemetry, yet packet reception is not 
 \begin{IEEEkeywords}LoRa, UAV, robotics, age of information, timely telemetry\end{IEEEkeywords}
 \section{Introduction}
 Robotic operations require more than eventual packet delivery. LoRa trades low-power range for transmission airtime, so long packets and weak links may compromise deadline-sensitive information \cite{bor,centenaro}. Age of Information (AoI) captures the freshness of received status \cite{kaul}. This paper asks how communication adaptation and mission-duration overhead influence critical alert timeliness under mobility. We contribute a reproducible simulator, explicit policy baselines, and a test protocol rather than an unverified improvement claim.
+\begin{figure}[t]
+\centering\fbox{\begin{minipage}{0.92\linewidth}\centering\small
+UAV inspection trajectory / MuJoCo pose interface\\[2pt]
+$\downarrow$ position, velocity, obstruction\\[2pt]
+\fbox{Raw-LoRa channel + message queue}\\[2pt]
+$\updownarrow$ telemetry, alerts, RSSI feedback\\[2pt]
+\fbox{Fixed / Reactive / Priority / MARS policies}\\[2pt]
+$\downarrow$ seeded event log\\[2pt]
+CSV metrics $\rightarrow$ figures $\rightarrow$ manuscript / dashboard
+\end{minipage}}
+\caption{Reproducible research architecture. Current runs use a kinematic trajectory; MuJoCo/ROS 2 interfaces are experimental.}\label{fig:arch}
+\end{figure}
 \section{Related Work and Scope}
 LoRa spreading factor changes sensitivity and airtime \cite{bor}; LoRaWAN adds network procedures not included here \cite{centenaro}. We model raw point-to-point LoRa, not LoRaWAN. MuJoCo \cite{todorov} and ROS 2 \cite{macenski} offer future flight integration, but the present baseline produces kinematic trajectories. A physically simulated drone remains necessary for full robotics-system claims.
 \section{Mission and Link Model}
