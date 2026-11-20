@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { PlanarSLAM, simulateScan, yawOfQuaternion } from '../src/slam.js';
+const scan=simulateScan([0,0,3,0],{beams:64,maxRange:18,seed:17});
+assert.equal(scan.ranges.length,64);
+assert.ok(scan.valid>0,'Survey altitude should see physical obstacles');
+const high=simulateScan([0,0,7,0],{beams:64,maxRange:18,seed:17});
+assert.equal(high.valid,0,'Horizontal scan above tallest building has no returns');
+assert.ok(Math.abs(yawOfQuaternion([1,0,0,0]))<1e-9);
+const slam=new PlanarSLAM();
+for(let k=0;k<20;k++){const t=k*.5;slam.update(t,{bodyVx:.2,bodyVy:0,yawRate:0},scan);}
+assert.equal(slam.scanCount,20);
+assert.ok(slam.map.some(x=>x>.2),'Scan endpoints should create occupied cells');
+assert.ok(slam.map.some(x=>x<-.2),'Scan rays should create free cells');
+assert.ok(Math.abs(slam.pose.x-1.9)<1,'Odometry integration unexpectedly diverged');
+assert.ok(slam.occupancyPercentage()>0);
+slam.reset();
+assert.equal(slam.scanCount,0);
+console.log('PASS: observable/unobservable scan geometry, occupancy mapping, body odometry, GPS-denied estimator reset');
