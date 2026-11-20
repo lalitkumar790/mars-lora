@@ -21,7 +21,9 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <section class="controls">
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
-<button id="mission" class="full">▶ Start waypoint mission</button>
+<label class="field full" for="missionType" style="margin:0">Flight mission</label>
+<select id="missionType" class="full"><option value="inspection">High-altitude inspection (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option></select>
+<button id="mission" class="full">▶ Start selected mission</button>
 <button id="pause">Ⅱ Pause</button>
 <button id="reset" class="danger">↺ Reset</button>
 <button id="hover" class="full">◎ Hold position</button>
@@ -36,7 +38,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <h2>GPS-denied mapping</h2>
 <label class="field" for="navSource">Navigation position source</label>
 <select id="navSource"><option value="truth">Physics truth (reference)</option><option value="slam">GPS-denied odometry + scan matching</option></select>
-<p>GPS-denied mode uses onboard-style odometry and an online estimated pose for navigation. Ground truth is shown only to evaluate drift and run a simulation-only safety supervisor.</p>
+<p>Select GPS-denied mode before takeoff/reset so the estimated local coordinate frame begins at the launch point. GPS-denied mode uses onboard-style odometry and an online estimated pose for navigation. Ground truth is shown only to evaluate drift and run a simulation-only safety supervisor.</p>
 <section class="controls"><button id="resetSlam" class="full">↺ Reset occupancy map</button></section>
 <div class="met" style="margin-top:12px">
 <div class="metric"><div class="k">Scan beams / returns</div><div class="v" id="scanBeams">—</div></div>
