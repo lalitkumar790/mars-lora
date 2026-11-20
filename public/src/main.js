@@ -213,6 +213,11 @@ function updateUI(){
  $('radioAoi').textContent=rs.aoi.toFixed(1)+' s';
  $('radioAlerts').textContent=rs.alerts;
  $('radioQueue').textContent=String(rs.queue);
+ $('rfAirtime').textContent=rs.txAirtime.toFixed(1)+' s';
+ $('rfEnergy').textContent=rs.txEnergy.toFixed(3)+' J';
+ $('rfDrops').textContent=rs.lost+' / '+rs.expired;
+ $('rfDeadline').textContent=rs.alertDeadlineRatio===null?'—':rs.alertDeadlineRatio.toFixed(0)+'%';
+ $('rfShadow').textContent='Simulated '+(rs.obstructed?'NLOS obstacle blockage':'LOS')+' · range '+rs.distance.toFixed(1)+' m. RSSI shadowing stochastic; derived PDR and AoI are model outputs, not physical measurements.';
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
@@ -225,7 +230,7 @@ function updateUI(){
  const rp=rs.packet;
  $('packetState').textContent=rp?(rp.expired?'EXPIRED':rp.ok?'RECEIVED':'LOST')+' · '+(rp.alert?'critical alert':'telemetry')+' · SF'+(rp.sf??rs.sf)+' · airtime '+((rp.toa??0)*1000).toFixed(1)+' ms':'No packets processed yet';
  $('rfParams').textContent='Tx 14 dBm · BW 125 kHz · coding rate 4/5 · SF '+rs.sf+' · log-distance exponent 4 · correlated shadow σ 4 dB · obstruction loss 17 dB · synthetic competing traffic 10% · routine deadline 8s / alert 3s.';
- if(t-lastDebugPlot>.3){lastDebugPlot=t;debugSamples.push({t,z,ref:lastDebug.target[2],rssi:rs.rssi,aoi:rs.aoi});if(debugSamples.length>120)debugSamples.shift();drawDebugPlot();}
+ if(t-lastDebugPlot>.3){lastDebugPlot=t;debugSamples.push({t,z,ref:lastDebug.target[2],rssi:rs.rssi,aoi:rs.aoi});if(debugSamples.length>120)debugSamples.shift();drawDebugPlot();drawRFPlot();}
 
 }
 function drawDebugPlot(){
@@ -237,6 +242,15 @@ function drawDebugPlot(){
  const path=(key,stroke,min,max)=>{ctx.beginPath();ctx.lineWidth=2;ctx.strokeStyle=stroke;debugSamples.forEach((p,i)=>{const n=Number(p[key]);const x=i/xmax*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min)*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
  path('ref','#f1bb78',0,9);path('z','#58d6eb',0,9);
  ctx.fillStyle='#b7cce0';ctx.font='12px sans-serif';ctx.fillText('Altitude: actual blue / target amber',9,17);
+}
+function drawRFPlot(){
+ const cv=$('rfChart');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
+ const w=cv.width,h=cv.height;ctx.fillStyle='#091927';ctx.fillRect(0,0,w,h);
+ for(let j=1;j<4;j++){ctx.strokeStyle='#254253';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,h*j/4);ctx.lineTo(w,h*j/4);ctx.stroke();}
+ if(debugSamples.length<2)return;
+ const curve=(key,min,max,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();debugSamples.forEach((p,i)=>{const n=p[key]??min,x=i/(debugSamples.length-1)*w,y=h-8-(Math.max(min,Math.min(max,n))-min)/(max-min))*(h-16);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();};
+ curve('rssi',-150,-60,'#61d6f0');curve('aoi',0,20,'#f7bb67');
+ ctx.font='12px sans-serif';ctx.fillStyle='#b7cce0';ctx.fillText('RSSI blue (-150..-60 dBm) · AoI amber (0..20s)',9,17);
 }
 function resize(){
  const root=$('viewport');
