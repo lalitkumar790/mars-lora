@@ -1,0 +1,22 @@
+[
+  {
+    "airframe": "heavy",
+    "completed": true,
+    "elapsed_s": 90.57,
+    "waypoint_reached": 7,
+    "min_clearance_m": 1.0,
+    "contact_samples": 0,
+    "max_tilt_deg": 6.59,
+    "max_tracking_error_m": 6.5
+  },
+  {
+    "airframe": "crazyflie",
+    "completed": true,
+    "elapsed_s": 90.57,
+    "waypoint_reached": 7,
+    "min_clearance_m": 1.24,
+    "contact_samples": 0,
+    "max_tilt_deg": 6.59,
+    "max_tracking_error_m": 6.5
+  }
+]
