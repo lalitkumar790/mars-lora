@@ -42,6 +42,7 @@ def metric(records,gt,tolerance=.3,window=10):
     if len(aligned)<3:
         raise ValueError("No synchronized LiDAR/ground-truth measurements. Export both logs from the same browser flight.")
     output={"aligned_samples":len(aligned),"duration_s":aligned[-1]["t"]-aligned[0]["t"]}
+    aligned_times=[r['t'] for r in aligned]
     for method in ("odom","est"):
         errors=[math.dist(r[method],r["truth"]) for r in aligned]
         output[method+"_ate_rmse_m"]=math.sqrt(mean([e*e for e in errors]))
@@ -50,7 +51,7 @@ def metric(records,gt,tolerance=.3,window=10):
         relative=[]
         for i,a in enumerate(aligned):
             t=a["t"]
-            j=bisect.bisect_left([r["t"] for r in aligned],t+window)
+            j=bisect.bisect_left(aligned_times,t+window)
             if j>=len(aligned):continue
             b=aligned[j]
             dt=(b["truth"][0]-a["truth"][0],b["truth"][1]-a["truth"][1])
