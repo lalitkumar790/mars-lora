@@ -1,0 +1,33 @@
+{
+  "method": "Actual MuJoCo CSV replay -> 3D ray/AABB obstruction -> seeded raw-LoRa events",
+  "trial_count": 480,
+  "seed_count": 20,
+  "gcs_positions_m": [
+    [
+      230,
+      220,
+      5
+    ],
+    [
+      220,
+      -230,
+      5
+    ]
+  ],
+  "shadow_sigma_db": [
+    4,
+    8
+  ],
+  "policies": [
+    "fixed",
+    "adaptive",
+    "priority-adaptive"
+  ],
+  "limitations": [
+    "synthetic path-loss and shadow",
+    "3D AABB blockage not measured RF",
+    "no physical radio",
+    "receiver SF handshakes idealized as 0.5 s",
+    "all policies have same flight trajectory: no RF-aware path optimization yet"
+  ]
+}
