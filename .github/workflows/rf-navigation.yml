@@ -1,0 +1,46 @@
+name: RF-aware 3D routing executed in MuJoCo
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mars_lora/rf_astar.py'
+      - 'experiments/rf_navigation.py'
+      - 'mujoco_sim/validate_mission.py'
+      - '.github/workflows/rf-navigation.yml'
+permissions:
+  contents: write
+concurrency:
+  group: mars-lora-rf-navigation
+  cancel-in-progress: true
+jobs:
+  run-planning:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install MuJoCo
+        run: python -m pip install mujoco==3.3.2
+      - name: Test geometric and radio A* planner
+        run: python -m unittest tests.test_rf_astar -v
+      - name: Execute collision-aware shortest vs RF-aware UAV missions
+        run: python -m experiments.rf_navigation --seeds 20 --output results/rf_navigation
+      - name: Commit experiment artifacts only to GitHub
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add results/rf_navigation
+          if ! git diff --cached --quiet; then
+            git commit -m 'results: MuJoCo-executed A* RF-aware navigation with paired LoRa measurements [skip ci]'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: executed-rf-aware-3d-navigation
+          path: results/rf_navigation/*
