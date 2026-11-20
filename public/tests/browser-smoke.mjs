@@ -14,8 +14,7 @@ try {
  const time = parseFloat(await page.locator('#time').innerText());
  if (!(altitude > initial+.2 && altitude < 15 && time > 1)) throw new Error('Flight did not respond to takeoff: '+JSON.stringify({initial,altitude,time}));
  await page.locator('#mission').click();
- await page.waitForTimeout(500);
- if (!(await page.locator('#waypoints').innerText()).includes('Active waypoint')) throw new Error('Waypoint mission did not activate');
+ await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
  await page.locator('#pause').click();
  if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
  await page.locator('#reset').click();
