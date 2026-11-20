@@ -65,6 +65,7 @@ class GPSDeniedReplay(Node):
         if self.i>=len(self.records):
             self.get_logger().info('Finished LiDAR/odometry replay')
             self.timer.cancel()
+            self.done=True
 
     def publish_record(self,record):
         t=float(record['t'])
@@ -118,7 +119,9 @@ def main():
     if not records:parser.error('Input LiDAR JSONL is empty')
     rclpy.init()
     node=GPSDeniedReplay(records,args.speed)
-    try:rclpy.spin(node)
+    try:
+        while rclpy.ok() and not node.done:
+            rclpy.spin_once(node,timeout_sec=.1)
     except KeyboardInterrupt:pass
     finally:
         node.destroy_node()
