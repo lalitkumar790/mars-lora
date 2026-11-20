@@ -17,6 +17,15 @@ try {
  await page.waitForFunction(() => document.querySelector('#waypoints')?.textContent.includes('Active waypoint'), null, {timeout:10000});
  await page.locator('#pause').click();
  if (!(await page.locator('#status').innerText()).includes('PAUSED')) throw new Error('Pause failed');
+ await page.locator('#airframe').selectOption('crazyflie');
+ await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:25000});
+ const cfInitial=parseFloat(await page.locator('#altitude').innerText());
+ await page.locator('#takeoff').click();
+ await page.waitForTimeout(3500);
+ const cfAltitude=parseFloat(await page.locator('#altitude').innerText());
+ if (!(cfAltitude>cfInitial+.2 && cfAltitude<12)) throw new Error('Crazyflie physics takeoff failed: '+JSON.stringify({cfInitial,cfAltitude}));
+ await page.locator('#airframe').selectOption('heavy');
+ await page.locator('#status').getByText('PHYSICS ONLINE').waitFor({timeout:25000});
  await page.locator('#reset').click();
  if (!(await page.locator('#status').innerText()).includes('PHYSICS ONLINE')) throw new Error('Reset failed');
  if(errors.length)throw new Error('Browser errors: '+errors.join('\n'));
