@@ -1,0 +1,33 @@
+{
+  "experiment": "Map-known 3D RF-aware A* executed in MuJoCo, then matched-seed LoRa replay",
+  "n_trials": 240,
+  "seeds_per_condition": 20,
+  "goal_xyz_m": [
+    -30,
+    24,
+    4
+  ],
+  "start_xyz_m": [
+    0,
+    0,
+    4
+  ],
+  "receiver_xyz_m": [
+    35.0,
+    28.0,
+    8.0
+  ],
+  "conditions": [
+    "S0_shortest_fixed",
+    "S1_shortest_adaptive",
+    "R2_RF_route_adaptive"
+  ],
+  "limitations": [
+    "Planner assumes known perfect static city map; does not use estimated SLAM pose",
+    "RF path loss, obstruction and reception probabilities remain uncalibrated",
+    "Controller tracks planned waypoints with errors, measured by native MuJoCo",
+    "Routes may differ in duration and therefore generated alert counts; compare normalized ratios cautiously",
+    "Random fading is time-indexed, not shared as a continuous spatial shadow field",
+    "Different navigation trajectories are not executed under independently randomized wind"
+  ]
+}
