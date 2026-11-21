@@ -55,24 +55,24 @@ def line_intersects(a,b,box):
             if lo>hi:return False
     return lo<.999 and hi>.001
 
-def obstructed(point,gcs=GCS):
-    return any(line_intersects(point,gcs,box) for box in SOLIDS)
+def obstructed(point,gcs=GCS,solids=SOLIDS):
+    return any(line_intersects(point,gcs,box) for box in solids)
 
-def path_clearance(points,radius=.32,margin=.55):
+def path_clearance(points,radius=.32,margin=.55,solids=SOLIDS):
     lowest=float("inf")
     for a,b in zip(points,points[1:]):
         length=math.dist(a,b)
         for k in range(max(2,math.ceil(length/.25)+1)):
             t=k/(max(2,math.ceil(length/.25)+1)-1)
             p=tuple(a[j]*(1-t)+b[j]*t for j in range(3))
-            lowest=min(lowest,signed_clearance(p)-radius)
+            lowest=min(lowest,signed_clearance(p,solids)-radius)
     return lowest
 
-def predict_success(p,gcs=GCS,sf=9):
+def predict_success(p,gcs=GCS,sf=9,solids=SOLIDS):
     """Uncalibrated SF9 expected-reception heuristic, *not* an empirical radio model."""
     from mars_lora.channel import SENSITIVITY_DBM
     d=max(1.,math.dist(p,gcs))
-    rssi=14-31.2-40*math.log10(d)-(17 if obstructed(p,gcs) else 0)
+    rssi=14-31.2-40*math.log10(d)-(17 if obstructed(p,gcs,solids) else 0)
     margin=rssi-SENSITIVITY_DBM[sf]
     return .9/(1+math.exp(-max(-45.,min(45.,margin))/1.8))
 
@@ -94,7 +94,8 @@ class Route:
     objective: float
 
 def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
-         max_nodes=12000,max_lateral=33,localization_sigma_m=0.):
+         max_nodes=12000,max_lateral=33,localization_sigma_m=0.,
+         solids=SOLIDS,start_xyz=START,goal_xyz=GOAL):
     """Map-known oracle path; sigma only inflates geometric exclusion.
 
     sigma is a supplied position error standard deviation. The planner
@@ -104,13 +105,15 @@ def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
     if radius<=0 or margin<0 or not math.isfinite(localization_sigma_m) or localization_sigma_m<0:
         raise ValueError("Invalid clearance or localization uncertainty")
     margin=margin+3.*localization_sigma_m
-    start=(0,0,nearest_k(START[2]))
-    goal=(-10,8,nearest_k(GOAL[2]))
+    if any(not math.isfinite(v) for v in (*start_xyz,*goal_xyz)):
+        raise ValueError("Start and goal must be finite")
+    start=(round(start_xyz[0]/SPACING),round(start_xyz[1]/SPACING),nearest_k(start_xyz[2]))
+    goal=(round(goal_xyz[0]/SPACING),round(goal_xyz[1]/SPACING),nearest_k(goal_xyz[2]))
     def safe_node(n):
         i,j,k=n
         if abs(i*SPACING)>max_lateral or abs(j*SPACING)>max_lateral:return False
         if k<0 or k>=len(ALTITUDES):return False
-        return signed_clearance(idx_to_pos(n))>=radius+margin
+        return signed_clearance(idx_to_pos(n),solids)>=radius+margin
     if not safe_node(start) or not safe_node(goal):raise ValueError("Unsafe start or goal")
     def segment_safe(a,b):
         a,b=idx_to_pos(a),idx_to_pos(b)
@@ -118,10 +121,10 @@ def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
         for t in range(steps+1):
             r=t/steps
             p=tuple(a[j]*(1-r)+b[j]*r for j in range(3))
-            if signed_clearance(p)<radius+margin:return False
+            if signed_clearance(p,solids)<radius+margin:return False
         return True
     def heuristic(n):
-        return math.dist(idx_to_pos(n),GOAL)
+        return math.dist(idx_to_pos(n),idx_to_pos(goal))
     counter=0
     todo=[(heuristic(start),0.,counter,start)]
     parent={start:None};best={start:0.}
@@ -144,7 +147,7 @@ def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
             travel=distance*(1.4 if step[2] else 1.0)
             rf_penalty=0.
             if name=="rf_aware":
-                p_success=predict_success(mid,gcs)
+                p_success=predict_success(mid,gcs,solids=solids)
                 # The penalty is an *expected link-quality proxy*,
                 # not an actual AoI/deadline measured during planning.
                 rf_penalty=distance*4.5*(1-p_success)
@@ -174,7 +177,7 @@ def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
         for k in range(n):
             t=(k+.5)/n
             p=tuple(a[i]*(1-t)+b[i]*t for i in range(3))
-            probabilities.append(predict_success(p,gcs))
-    clearance=path_clearance(compact,radius,margin)
+            probabilities.append(predict_success(p,gcs,solids=solids))
+    clearance=path_clearance(compact,radius,margin,solids=solids)
     if clearance<margin-1e-6:raise AssertionError("Planner produced clearance violation")
     return Route(name,compact,total,sum(probabilities)/len(probabilities),clearance,expanded,best[goal])
