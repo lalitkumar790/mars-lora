@@ -128,3 +128,17 @@ Press **Generate NEW city + start selected mission**. The site planner chooses *
 The project now includes additional **negative-result** experiments: native full-city 3D collision clearance, five UAV controller variants (20 wind scenarios each), three ex-ante route/spreading-factor decision policies (200 actual LoRa-replay trials each), and an illustrative induced-hover propulsion-energy accounting. Results and precise limitations are in [Research audit and acceptance gates](research/RESEARCH_AUDIT_AND_GATES.md). New data folders: [wind robustness](results/wind_robustness/), [barrier V1](results/barrier_guard/), [closing-speed barrier V2](results/barrier_ttc/), [joint route+SF V1](results/joint_gate/), [V2](results/joint_gate_v2/), [V3](results/joint_gate_v3/), and [propulsion energy proxy](results/flight_energy_proxy/).
 
 **Do not interpret any candidate controller as robust:** the legacy, higher-authority, integral and both obstacle barriers fail at least one fixed-seed safety criterion. Full UAV battery energy, GPS-denied SLAM, realistic LoRa radio and unseen-city robustness are still unvalidated. The browser simulator remains separate from these offline research results; Vercel has not been used to host graphs or datasets.
+
+## Phase 6: Native city replication and map-aided LiDAR localization
+
+The research pipeline now tests the frozen preliminary communication-and-route policy on four urban city seeds that differ from the initial map. Across the two evaluations, 16/16 reference-navigation MuJoCo missions were completed with no contact and required clearance, under mild deterministic force disturbances. Paired synthetic LoRa outcomes from 384 packet-replay trials show that the joint route/SF decision does not always improve timely critical-alert delivery or total mission energy proxy.
+
+Native controller experiments now feed a noisy XY position estimate into the actual MuJoCo flight loop. Brownian drift causes safety to drop from 8/8 at zero drift to 3/8 at drift 0.06 m/sqrt(s) on two city seeds. A 16-beam, known-map horizontal LiDAR scan matcher reduces the mean estimated XY error from 1.039 m to 0.122 m under that setting and changes safe completions from 3/8 to 8/8. This is a GPS-free **map-aided localization experiment**, **NOT verified SLAM**: the map, orientation and body velocity are idealized, and no real LiDAR or IMU hardware has been tested.
+
+Research files:
+- results/unseen_city and results/unseen_city_replication: 4 urban seeds, flight failures and LoRa trials.
+- results/localization_stress: 32 drifting-estimate flight tests.
+- results/lidar_map_matching: 32 paired closed-loop known-map LiDAR correction comparisons.
+- research/RESEARCH_AUDIT_AND_GATES.md: acceptance gates and negative findings.
+
+The live Vercel browser lab remains separate; native experimental data are published in GitHub, not hosted on Vercel.
