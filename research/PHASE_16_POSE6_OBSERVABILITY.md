@@ -26,3 +26,24 @@ Phase 15 [native test 44913719354](https://github.com/lalitkumar790/mars-lora/ac
 ## Research decision
 
 Do not promote estimation or flight controller. Next, identify per-direction weak information subspaces and compare their eigenvectors with actual position/attitude errors on a *separate* development scenario set. Only then consider an observability-aware scan correction model that passes estimator-consistency trials and physically safe flight. Any eventual holdout must use fresh city seeds and frozen decision rules.
+
+## Verified native development outcomes
+
+[GitHub Actions run 44916447048](https://github.com/lalitkumar790/mars-lora/actions/runs/44916447048) completed mathematical tests and all matched native MuJoCo trials. No-shadow and observer-enabled runs of safe seed 91311 reproduced identical completion, contact count, minimum clearance, elapsed time, legacy position RMSE and 15-state precontact RMSE.
+
+| Metric (pre-first-contact; whole flight for safe case) | Safe 91311/shortest | Failed 48221/RF-aware |
+|---|---:|---:|
+| Synthetic body-fixed scans evaluated | 47 | 29 |
+| Local full 6D rank | **15/47** | **4/29** |
+| Local rank-5 (one weak direction) | 32 | 17 |
+| Rank-0 | 0 | 8 |
+| Translation principal-subspace rank 3 | **15/47** | **5/29** |
+| Rotation principal-subspace rank 3 | 47/47 | 21/29 |
+| Flight completion | yes | no |
+| MuJoCo contact samples | 0 | 6,693 |
+
+**Interpretation:** locally, the body-fixed synthetic LiDAR constrains orientation more frequently than position in these specific selected city trajectories; a 15-state inertial filter cannot recover position reliably without adequate translation information. In the failed route, 8/29 pre-impact scans offered effectively no local information under this finite-difference criterion. This is consistent with Phase 15's position-only result. It is **correlation, not proven causation** of the collision, and it is based on a hypothetical additional sensor stream, not the original yaw-only scan.
+
+**Crucial units/rank caveat:** right-multiplicative orientation columns are scaled with a fixed 2m characteristic length. The chosen rank ratio, range dropouts, small perturbations and map geometry influence these counts. The translation and rotation **principal-block** ranks can each be 3 while full 6D rank is 5, reflecting cross-correlation. The current study does not quantify the eigenvector of the missing direction or statistically validate information thresholds.
+
+**Research decision:** successful diagnostic implementation, but **no go for onboard estimator or planner control**. The next experiment should calculate the weakest information eigenvector per scan and compare it with the direction of pre-impact position error, using new development cities and equal-duration windows; then test an active-perception waypoint policy constrained by actual rotor stopping dynamics. Any paper should identify this as a simulation-only geometric observability analysis.
