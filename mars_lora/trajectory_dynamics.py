@@ -50,7 +50,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
                      radius=.32,sigma_m=.12,geometric_margin_m=.55,
                      max_speed_m_s=1.0,braking_m_s2=.8,
                      motor_latency_s=.2,wind_accel_bound_m_s2=.15,
-                     corner_speed_m_s=.30,max_pair_attempts=50):
+                     corner_speed_m_s=.30,max_pair_attempts=8):
     """Produce static collision-checked approach/transit/exit and speed timetable.
 
     Every candidate starts/ends at the *exact* requested pose. Segment
@@ -149,9 +149,9 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
                 speed,required,attempts)))
             # Avoid choosing only nominal shortest when a wide-clearance
             # alternative exists. Keep candidate count bounded for CI.
-            if len(feasible)>=8:
+            if len(feasible)>=2:
                 break
-        if len(feasible)>=8:
+        if len(feasible)>=2:
             break
     if not feasible:
         raise RuntimeError('No dynamically screened exact-endpoint trajectory')
