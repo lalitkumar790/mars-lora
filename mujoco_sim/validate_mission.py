@@ -16,6 +16,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from mars_lora.urban_scene import add_city_mjcf
 from mars_lora.rf_astar import SOLIDS, INDUSTRIAL, signed_clearance as full_city_clearance
 from mars_lora.urban_scene import city, CITY_SEED
+from mars_lora.lidar_map_matching import observe_scan,match_scan
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -71,9 +72,11 @@ def quat_to_rpy(q):
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
-        localization_seed=0):
+        localization_seed=0,localization_mode='drift'):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
+    if localization_mode not in ('drift','lidar_match'):
+        raise ValueError('Unknown navigation localization mode')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
@@ -81,7 +84,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     root=Path(__file__).resolve().parents[1]
     xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
     model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml,seed=city_seed))
-    scene_grid=(CLEARANCE_GRID if city_seed==CITY_SEED else make_clearance_grid(INDUSTRIAL+tuple(city(city_seed))))
+    scene_solids=INDUSTRIAL+tuple(city(city_seed))
+    scene_grid=(CLEARANCE_GRID if city_seed==CITY_SEED else make_clearance_grid(scene_solids))
     data=mujoco.MjData(model)
     mujoco.mj_forward(model,data)
     mass=.027 if airframe=="crazyflie" else 1.325
@@ -96,7 +100,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     # This models pose-ESTIMATE perturbations, not a functioning SLAM solver.
     # Orientation and velocity remain MuJoCo truth/IMU proxies: optimistic.
     localization_rng=random.Random(localization_seed)
+    lidar_rng=random.Random(localization_seed+991)
     localization_bias=[0.,0.]
+    map_correction=[0.,0.]
+    lidar_accepted=lidar_rejected=0
+    next_lidar_time=1.0
     localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
     dt=model.opt.timestep
     steps=round(duration/dt)
@@ -109,9 +117,22 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if localization_drift_m_sqrt_s:
                 for axis in (0,1):
                     localization_bias[axis]+=localization_drift_m_sqrt_s*math.sqrt(localization_dt)*localization_rng.gauss(0.,1.)
-            nav_xy=tuple(float(p[axis])+localization_bias[axis]+(
+            raw_xy=tuple(float(p[axis])+localization_bias[axis]+(
                 localization_noise_sigma_m*localization_rng.gauss(0.,1.)
                 if localization_noise_sigma_m else 0.) for axis in (0,1))
+            if localization_mode=='lidar_match' and t>=next_lidar_time:
+                scan=observe_scan((float(p[0]),float(p[1])),yaw,float(p[2]),
+                                  scene_solids,lidar_rng,noise_sigma=.06)
+                prior=(raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1])
+                corrected,accepted,scan_score=match_scan(
+                    prior,yaw,float(p[2]),scan,scene_solids)
+                if accepted:
+                    map_correction[0]=corrected[0]-raw_xy[0]
+                    map_correction[1]=corrected[1]-raw_xy[1]
+                    lidar_accepted+=1
+                else:lidar_rejected+=1
+                next_lidar_time+=2.0
+            nav_xy=(raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1])
             navigation_error=math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1])
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
@@ -254,6 +275,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 localization_drift_m_sqrt_s=localization_drift_m_sqrt_s,
                 localization_measurement_sigma_m=localization_noise_sigma_m,
                 localization_seed=localization_seed,
+                localization_mode=localization_mode,
+                lidar_matches_accepted=lidar_accepted,
+                lidar_matches_rejected=lidar_rejected,
                 safety_holds=safety_holds,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
