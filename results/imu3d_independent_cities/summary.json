@@ -1,0 +1,54 @@
+{
+  "phase": "Experimental 3D range plus inertial state estimation, uncertainty-based map replanning",
+  "city_seeds": [
+    73571,
+    18931
+  ],
+  "physical_runs": 6,
+  "expected_runs": 12,
+  "hybrid_fusion_and_shared_blackout": true,
+  "planner_errors": [
+    {
+      "city_seed": 73571,
+      "error": "Unsafe start or goal"
+    }
+  ],
+  "results": [
+    {
+      "mode": "lidar_match_no_replan",
+      "scenarios": 2,
+      "safety_pass": 2,
+      "mean_ate_m": 0.10655,
+      "total_map_replans": 0,
+      "total_replan_failures": 0,
+      "total_lidar_corrections": 44
+    },
+    {
+      "mode": "lidar_imu3d_hybrid_no_replan",
+      "scenarios": 2,
+      "safety_pass": 0,
+      "mean_ate_m": 0.0878,
+      "total_map_replans": 0,
+      "total_replan_failures": 0,
+      "total_lidar_corrections": 15
+    },
+    {
+      "mode": "lidar_imu3d_hybrid_replan",
+      "scenarios": 2,
+      "safety_pass": 0,
+      "mean_ate_m": 0.0878,
+      "total_map_replans": 0,
+      "total_replan_failures": 10,
+      "total_lidar_corrections": 15
+    }
+  ],
+  "caution": [
+    "No true simultaneous mapping: exact static prior geometry available",
+    "IMU measurements simulated from native velocity finite differences, with Gaussian noise and drift",
+    "Initial launch location known and yaw/rotor-attitude loop still use ideal native physics",
+    "3D scan matching uses 48 synthetic rays with AABB buildings, no moving pedestrians/vehicles",
+    "Only heavy UAV, two new cities and mild disturbance; not real-world validation",
+    "A* replanning uses estimated XYZ and heuristic covariance proxy, not proven consistent Gaussian uncertainty",
+    "Unsafe/incomplete flights remain explicit in outcome; no optimistic packet replay for them"
+  ]
+}
