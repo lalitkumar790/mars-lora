@@ -128,6 +128,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     map_replans=map_replan_failures=localization_lost_events=0
     first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
     risk_alarm_first=None;risk_alarm_count=0;risk_monitor_checks=0
+    loss_of_confidence_first=None;loss_of_confidence_samples=0
     stopping_envelope_rejections=0
     reference_start_t=None;reference_index=0;reference_settle_s=None
     accepted_replan_events=[];rejected_replan_events=[]
@@ -246,6 +247,18 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     nav_xyz,nav_velocity,sigma,
                     lambda q:fast_city_clearance(q,radius,grid=scene_grid))
                 risk_monitor_checks+=1
+                # Independent of estimated map proximity: a sensor model
+                # that cannot support a small pose-error bound must not be
+                # treated as a valid geometric safety supervisor. This is
+                # an experimental warning threshold, not calibrated NEES.
+                if sigma>=.50:
+                    loss_of_confidence_samples+=1
+                    if loss_of_confidence_first is None:
+                        loss_of_confidence_first={
+                           "t_s":round(float(t),3),
+                           "estimated_sigma_m":round(float(sigma),3),
+                           "estimated_xyz":[round(float(v),3) for v in nav_xyz]}
+
                 if alarm.warning:
                     risk_alarm_count+=1
                     if risk_alarm_first is None:
@@ -560,6 +573,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 online_risk_monitor=online_risk_monitor,
                 risk_monitor_checks=risk_monitor_checks,
                 risk_alarm_count=risk_alarm_count,
+                loss_of_confidence_first=loss_of_confidence_first,
+                loss_of_confidence_samples=loss_of_confidence_samples,
                 first_risk_alarm=risk_alarm_first,
                 reference_started=reference_start_t is not None,
                 reference_settle_s=reference_settle_s,
