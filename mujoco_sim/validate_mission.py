@@ -226,9 +226,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # drives start XYZ; truth is NEVER used for replanning.
                 from mars_lora.rf_astar import plan
                 try:
+                    radius=(.08 if airframe=='crazyflie' else .32)
+                    # Replanning is only legal if the estimator's *current*
+                    # position has room for both uncertainty and braking.
+                    # Otherwise preserve the previous verified route.
+                    current_clearance=fast_city_clearance(nav_xyz,radius,grid=scene_grid)
+                    if current_clearance<1.8:
+                        raise ValueError('Replan deferred: no safe maneuver space')
                     updated=plan('shortest',solids=scene_solids,
                         start_xyz=tuple(nav_xyz),goal_xyz=tuple(waypoints[-1]),
-                        radius=(.08 if airframe=='crazyflie' else .32),
+                        radius=radius,margin=1.3,
                         localization_sigma_m=min(.45,inertial.sigma_m),
                         max_nodes=16000)
                     # Safe splice: the continuous transition from estimated
@@ -238,7 +245,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     from mars_lora.rf_astar import path_clearance
                     radius=(.08 if airframe=='crazyflie' else .32)
                     transition=[tuple(nav_xyz),*updated.points]
-                    required_margin=.55+3*min(.45,inertial.sigma_m)
+                    required_margin=1.3+3*min(.45,inertial.sigma_m)
                     if (math.dist(transition[0],transition[1])>2.8 or
                         path_clearance(transition,radius=radius,
                                        margin=required_margin,
@@ -246,7 +253,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         raise ValueError('Unsafe replan splice')
                     # Do not switch trajectories during significant lateral
                     # travel; an abrupt turn at speed creates a real contact.
-                    if math.hypot(nav_velocity[0],nav_velocity[1])>.85:
+                    if math.hypot(nav_velocity[0],nav_velocity[1])>.45:
                         raise ValueError('Replan handoff speed too high')
                     waypoints=transition[1:]
                     idx=0;map_replans+=1
