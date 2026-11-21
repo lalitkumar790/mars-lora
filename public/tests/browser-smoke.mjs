@@ -51,6 +51,13 @@ try {
  const secondMission=await page.locator('#missionIdentity').innerText();
  if (firstMission===secondMission)throw new Error('Second flight reused first mission and city seed');
  if (!(await page.locator('#waypoints').innerText()).includes('Active waypoint'))throw new Error('Randomized A* mission not flying');
+ await page.locator('#missionType').selectOption('sites_rf');
+ await page.locator('#mission').click();
+ await page.waitForFunction(() => document.querySelector('#siteProgress')?.textContent.includes('Site 2'), null, {timeout:45000});
+ const siteStatus=await page.locator('#plannerStatus').innerText();
+ if (!siteStatus.includes('building sites'))throw new Error('Building-to-building inspection route was not initialized: '+siteStatus);
+ const sitesDistance=parseFloat(await page.locator('#planDistance').innerText());
+ if (!(sitesDistance>60 && sitesDistance<450))throw new Error('Building route distance incorrect: '+sitesDistance);
 
  if(errors.length)throw new Error('Browser errors: '+errors.join('\n'));
  console.log('PASS: MuJoCo in Chromium; takeoff altitude '+initial+'m -> '+altitude+'m; sim time '+time+'s; mission, pause, reset.');
