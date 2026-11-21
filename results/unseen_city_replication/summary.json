@@ -4,6 +4,6 @@
   "flight_cases": 8,
   "safe_flights": 8,
   "radio_trials": 192,
-  "paired_groups": 0,
+  "paired_groups": 8,
   "scientific_note": "No unsafe or incomplete MuJoCo route can contribute radio scores; failures preserved separately."
 }
