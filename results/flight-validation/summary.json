@@ -2,6 +2,8 @@
   {
     "airframe": "heavy",
     "controller_mode": "legacy",
+    "wind_phase": 0.0,
+    "safety_holds": 0,
     "completed": true,
     "elapsed_s": 90.51,
     "waypoint_reached": 7,
@@ -20,6 +22,8 @@
   {
     "airframe": "crazyflie",
     "controller_mode": "legacy",
+    "wind_phase": 0.0,
+    "safety_holds": 0,
     "completed": true,
     "elapsed_s": 105.35,
     "waypoint_reached": 7,
