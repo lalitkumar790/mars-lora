@@ -1,4 +1,4 @@
-name: 3D LiDAR IMU safe-splice path-replanning V4 validation
+name: 3D LiDAR IMU safety-constrained replanning V5 ablation
 on:
   workflow_dispatch:
   push:
@@ -29,17 +29,17 @@ jobs:
       - name: Verify 3D LiDAR geometry, pose registration and inertial prediction
         run: python -m unittest tests.test_lidar_imu3d -v
       - name: Execute new-city physics trajectories with localization and uncertainty replans
-        run: python -m experiments.imu3d_replanning_audit --hybrid --output results/imu3d_replanning_v4
+        run: python -m experiments.imu3d_replanning_audit --hybrid --output results/imu3d_replanning_v5
       - name: Publish both successes and negative results
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          tar -czf /tmp/imu3d-results.tgz results/imu3d_replanning_v4
+          tar -czf /tmp/imu3d-results.tgz results/imu3d_replanning_v5
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             tar -xzf /tmp/imu3d-results.tgz
-            git add results/imu3d_replanning_v4
+            git add results/imu3d_replanning_v5
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'results: independent-city 3D LiDAR IMU and uncertainty A-star validation [skip ci]'
             if git push origin HEAD:main; then exit 0; fi
@@ -49,4 +49,4 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: native-3d-imu-replanning-study
-          path: results/imu3d_replanning_v4/*
+          path: results/imu3d_replanning_v5/*
