@@ -7,7 +7,7 @@ This is a model-based heuristic, not a calibrated predictive controller.
 from __future__ import annotations
 from dataclasses import dataclass
 from math import dist,exp,isfinite,log10
-from mars_lora.rf_astar import GCS,START,obstructed
+from mars_lora.rf_astar import GCS,START,SOLIDS,obstructed
 from mars_lora.channel import SENSITIVITY_DBM,airtime_s
 
 @dataclass(frozen=True)
@@ -19,10 +19,11 @@ class Candidate:
     expected_airtime_s: float
     estimated_flight_s: float
     score: float
+    estimated_propulsion_energy_j: float=0.
 
-def _expected_rssi(point,receiver):
+def _expected_rssi(point,receiver,solids=SOLIDS):
     d=max(1.,dist(point,receiver))
-    return 14.-31.2-40.*log10(d)-(17. if obstructed(point,receiver) else 0.)
+    return 14.-31.2-40.*log10(d)-(17. if obstructed(point,receiver,solids) else 0.)
 
 def _samples(points,spacing=1.5):
     from math import ceil
@@ -37,19 +38,22 @@ def _samples(points,spacing=1.5):
 def predict_candidate(name,points,pilot_rssi_dbm,busy_fraction,receiver=GCS,
                       flight_speed_mps=1.2,deadline_s=3.,
                       missed_alert_weight=100.,time_weight=.15,
-                      airtime_budget_fraction=None):
+                      airtime_budget_fraction=None,solids=SOLIDS,
+                      flight_hover_power_w=0.,propulsion_energy_weight=0.):
     if not points or len(points)<2:raise ValueError("Need existing planned route")
     if not isfinite(pilot_rssi_dbm) or not 0<=busy_fraction<=1:
         raise ValueError("Invalid radio pilot")
-    if flight_speed_mps<=0 or deadline_s<=0:raise ValueError("Invalid flight parameters")
+    if flight_speed_mps<=0 or deadline_s<=0 or flight_hover_power_w<0 or propulsion_energy_weight<0:
+        raise ValueError("Invalid flight/energy parameters")
     # Pilot-correct the *known* path-loss model. The correction is capped:
     # single-site RSSI does not identify spatial shadow distribution.
-    bias=max(-20.,min(20.,pilot_rssi_dbm-_expected_rssi(START,receiver)))
+    bias=max(-20.,min(20.,pilot_rssi_dbm-_expected_rssi(points[0],receiver,solids)))
     length=sum(dist(a,b) for a,b in zip(points,points[1:]))
     locations=_samples(points)
     if not locations:raise ValueError("Empty route")
-    estimates=[_expected_rssi(p,receiver)+bias for p in locations]
+    estimates=[_expected_rssi(p,receiver,solids)+bias for p in locations]
     flight_time=length/flight_speed_mps
+    estimated_propulsion_energy_j=flight_hover_power_w*flight_time
     best=None
     # The same SF is used for the entire route in this *offline* gate.
     # This is NOT the adaptive-SF replay policy used to score the outcome.
@@ -76,8 +80,10 @@ def predict_candidate(name,points,pilot_rssi_dbm,busy_fraction,receiver=GCS,
             timely_proxy=probability*remaining
             airtime_penalty=10.*toa
         score=(missed_alert_weight*(1-timely_proxy) + time_weight*flight_time
-               + airtime_penalty)
-        candidate=Candidate(name,sf,timely_proxy,1-timely_proxy,toa,flight_time,score)
+               + airtime_penalty
+               + propulsion_energy_weight*estimated_propulsion_energy_j)
+        candidate=Candidate(name,sf,timely_proxy,1-timely_proxy,toa,flight_time,score,
+                            estimated_propulsion_energy_j)
         if best is None or candidate.score<best.score:best=candidate
     if best is None:raise RuntimeError("No SF meets the alert airtime limit")
     return best
