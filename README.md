@@ -142,3 +142,11 @@ Research files:
 - research/RESEARCH_AUDIT_AND_GATES.md: acceptance gates and negative findings.
 
 The live Vercel browser lab remains separate; native experimental data are published in GitHub, not hosted on Vercel.
+
+## Phase 7: experimental 3D LiDAR/IMU and uncertainty-triggered replanning
+
+The native physics research branch now has a 48-ray 3D LiDAR scan matcher, inertial XYZ/velocity/yaw state propagation, synthetic barometer + optical-flow aiding, an uncertainty proxy, and map-known 3D A* replanning with geometric and low-speed route-handoff checks. These are Python research modules, **not** a field-ready ROS 2 autopilot or the default browser controller.
+
+**Critical safety result:** Under a 30-second LiDAR blackout, the reproducible V5 test (two seeded cities, both routes, one heavy UAV) found 4/4 safe physical flights for the established 2D map-aided baseline, but only 1/4 for the new 3D hybrid without replanning and 1/4 for the same hybrid with the proposed clearance/speed-gated replanner. All V1–V5 negative results are preserved. Although map-aided corrections reduced average position drift, the hybrid controller is **rejected for promotion** until it can satisfy the full zero-contact/clearance/mission-completion envelope in new environments.
+
+See [Phase 7 audit](research/PHASE_7_3D_LIDAR_IMU_AUDIT.md) and [V5 native MuJoCo results](results/imu3d_replanning_v5/). The **physical validation pathway** is documented in [Hardware validation protocol](research/HARDWARE_VALIDATION_PROTOCOL.md). [Physical-only LoRa log analysis](analysis/hardware_lora_validation.py) refuses to claim field measurements without genuine site-disjoint TX/RX logs. No real LoRa packets, 3D LiDAR scans or UAV flight records have been supplied or processed; the original GPS-denied hardware research objective is **not yet demonstrated**.
