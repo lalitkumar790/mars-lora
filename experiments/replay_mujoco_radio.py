@@ -35,8 +35,8 @@ def intersect_segment(a,b,box):
             if hi<lo:return False
     return hi>.02 and lo<.98
 
-def obstructed(uav,gcs):
-    return any(intersect_segment(uav,gcs,b) for b in SCENE)
+def obstructed(uav,gcs,scene=SCENE):
+    return any(intersect_segment(uav,gcs,b) for b in scene)
 
 def load_trajectory(path):
     with open(path,newline='') as f:
@@ -85,7 +85,7 @@ def spatial_shadow_field(position, seed, sigma, correlation_m=14.):
 
 
 def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
-          profile=None,spatial_fading=False,sf_override=None):
+          profile=None,spatial_fading=False,sf_override=None,scene=None):
 
     horizon=trace[-1][0]
     N=math.ceil(horizon/step)
@@ -120,7 +120,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
             a,b=trace[j-1],trace[j]
             w=(t-a[0])/max(1e-9,b[0]-a[0])
             p=tuple(a[i]*(1-w)+b[i]*w for i in (1,2,3))
-        blocked=obstructed(p,gcs)
+        blocked=obstructed(p,gcs,SCENE if scene is None else scene)
         nlos+=int(blocked)
         d=max(1.,math.dist(p,gcs))
         shadow=spatial_shadow_field(p,seed,shadow_sigma) if spatial_fading else fades[k]
