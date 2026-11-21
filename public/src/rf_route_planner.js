@@ -56,7 +56,7 @@ export function checkRoute(route,radius=.32,buffer=.55){
 }
 export function planInteractiveRoute(method='shortest',radius=.32,options={}){
  if(!['shortest','rf_aware'].includes(method))throw Error('Unsupported planner');
- const start=[0,0,0],margin=.65;
+ const start=[0,0,0],margin=1.3;
  const goalPosition=options.goal??AIRSPACE_GOAL;
  const goal=[Math.round(goalPosition[0]/spacing),Math.round(goalPosition[1]/spacing),0];
  const nodeSafe=n=>{
@@ -125,7 +125,7 @@ export function randomUrbanGoal(previous=null,random=Math.random){
    if(radius<24||radius>67)continue;
    const p=[i*spacing,j*spacing,4];
    if(previous&&Math.hypot(p[0]-previous[0],p[1]-previous[1])<12)continue;
-   if(signedClearance(p)<1.8)continue;
+   if(signedClearance(p)<2.1)continue;
    choices.push(p);
  }
  if(!choices.length)throw Error('No open airspace destinations in this city');
