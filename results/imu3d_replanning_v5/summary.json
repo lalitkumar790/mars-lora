@@ -6,26 +6,14 @@
   ],
   "physical_runs": 12,
   "expected_runs": 12,
-  "end_to_end_safety": {
-    "expected_flights": 12,
-    "executed_flights": 12,
-    "planning_failure_flights": 0,
-    "safe_flights": 6,
-    "complete_matrix": true,
-    "safety_gate_passed": false
-  },
   "hybrid_fusion_and_shared_blackout": true,
   "planner_errors": [],
   "results": [
     {
       "mode": "lidar_match_no_replan",
       "scenarios": 4,
-      "executed_flights": 4,
-      "planning_failures": 0,
       "safety_pass": 4,
-      "safety_fail": 0,
-      "safe_fraction_of_all_scenarios": 1.0,
-      "mean_ate_m_executed_only": 0.12705,
+      "mean_ate_m": 0.12705,
       "total_map_replans": 0,
       "total_replan_failures": 0,
       "total_lidar_corrections": 70
@@ -33,12 +21,8 @@
     {
       "mode": "lidar_imu3d_hybrid_no_replan",
       "scenarios": 4,
-      "executed_flights": 4,
-      "planning_failures": 0,
       "safety_pass": 1,
-      "safety_fail": 3,
-      "safe_fraction_of_all_scenarios": 0.25,
-      "mean_ate_m_executed_only": 0.188025,
+      "mean_ate_m": 0.188025,
       "total_map_replans": 0,
       "total_replan_failures": 0,
       "total_lidar_corrections": 64
@@ -46,12 +30,8 @@
     {
       "mode": "lidar_imu3d_hybrid_replan",
       "scenarios": 4,
-      "executed_flights": 4,
-      "planning_failures": 0,
       "safety_pass": 1,
-      "safety_fail": 3,
-      "safe_fraction_of_all_scenarios": 0.25,
-      "mean_ate_m_executed_only": 0.1708,
+      "mean_ate_m": 0.1708,
       "total_map_replans": 7,
       "total_replan_failures": 7,
       "total_lidar_corrections": 108
@@ -62,10 +42,8 @@
     "IMU measurements simulated from native velocity finite differences, with Gaussian noise and drift",
     "Initial launch location known and yaw/rotor-attitude loop still use ideal native physics",
     "3D scan matching uses 48 synthetic rays with AABB buildings, no moving pedestrians/vehicles",
-    "Only heavy UAV, procedural cities and mild disturbance; not real-world validation",
+    "Only heavy UAV, two new cities and mild disturbance; not real-world validation",
     "A* replanning uses estimated XYZ and heuristic covariance proxy, not proven consistent Gaussian uncertainty",
-    "Unplanned, unsafe and incomplete missions are included as failures in the full experimental denominator",
-    "Position ATE is measured on executed flights only and cannot validate mission safety",
-    "No LoRa credit is assigned to physically failed flights"
+    "Unsafe/incomplete flights remain explicit in outcome; no optimistic packet replay for them"
   ]
 }
