@@ -1,5 +1,5 @@
-airframe,controller_mode,city_seed,wind_phase,safety_holds,completed,elapsed_s,waypoint_reached,min_clearance_m,contact_samples,max_tilt_deg,max_tracking_error_m,xy_tracking_rms_m,route_waypoints,end_position_xyz,route,planned_distance_m,predicted_mean_success
-heavy,legacy,37021,0.0,0,True,105.23,11,0.832,0,5.37,3.5,0.893,11,"[-30.08, 23.507, 4.0]",shortest,54.0,0.04612099130099938
-heavy,legacy,37021,0.0,0,True,118.51,13,1.164,0,4.96,13.01,0.86,13,"[-29.862, 24.14, 4.253]",rf_aware,80.0,0.711758502570027
-crazyflie,legacy,37021,0.0,0,True,127.08,11,0.722,0,6.62,3.5,0.923,11,"[-29.991, 23.501, 4.0]",shortest,54.0,0.04612099130099938
-crazyflie,legacy,37021,0.0,0,True,127.36,13,1.133,0,9.86,12.99,0.914,13,"[-29.983, 23.551, 4.132]",rf_aware,80.0,0.711758502570027
+airframe,controller_mode,city_seed,wind_phase,navigation_ate_rmse_m,navigation_max_error_m,localization_drift_m_sqrt_s,localization_measurement_sigma_m,localization_seed,safety_holds,completed,elapsed_s,waypoint_reached,min_clearance_m,contact_samples,max_tilt_deg,max_tracking_error_m,xy_tracking_rms_m,route_waypoints,end_position_xyz,route,planned_distance_m,predicted_mean_success
+heavy,legacy,37021,0.0,0.0,0.0,0.0,0.0,0,0,True,105.23,11,0.832,0,5.37,3.5,0.893,11,"[-30.08, 23.507, 4.0]",shortest,54.0,0.04612099130099938
+heavy,legacy,37021,0.0,0.0,0.0,0.0,0.0,0,0,True,118.51,13,1.164,0,4.96,13.01,0.86,13,"[-29.862, 24.14, 4.253]",rf_aware,80.0,0.711758502570027
+crazyflie,legacy,37021,0.0,0.0,0.0,0.0,0.0,0,0,True,127.08,11,0.722,0,6.62,3.5,0.923,11,"[-29.991, 23.501, 4.0]",shortest,54.0,0.04612099130099938
+crazyflie,legacy,37021,0.0,0.0,0.0,0.0,0.0,0,0,True,127.36,13,1.133,0,9.86,12.99,0.914,13,"[-29.983, 23.551, 4.132]",rf_aware,80.0,0.711758502570027
