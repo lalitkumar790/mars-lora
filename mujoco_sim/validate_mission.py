@@ -496,6 +496,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         if data.ncon>0 and first_contact is None:
             first_contact={"t_s":round(float(data.time),3),
                "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "estimated_xyz":[round(float(a),3) for a in nav_xyz],
+               "estimated_velocity_xyz":[round(float(a),3) for a in nav_velocity],
+               "actual_velocity_xyz":[round(float(a),3) for a in data.qvel[:3]],
+               "localization_error_m":round(float(math.dist(nav_xyz,data.qpos[:3])),3),
+               "precontact_navigation_rmse_m":round(math.sqrt(localization_sq_sum/max(1,localization_updates)),3),
+               "estimated_sigma_m":(round(float(inertial.sigma_m),3) if inertial else None),
+               "reference_elapsed_s":(round(float(data.time-reference_start_t),3)
+                    if reference_start_t is not None else None),
                "clearance_m":round(float(clearance),3),"waypoint_index":idx}
         contacts+=int(data.ncon>0)
         if k%25==0:
