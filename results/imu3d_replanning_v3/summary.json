@@ -1,0 +1,31 @@
+{
+  "phase": "Experimental 3D range plus inertial state estimation, uncertainty-based map replanning",
+  "city_seeds": [
+    91311,
+    20483
+  ],
+  "physical_runs": 8,
+  "expected_runs": 8,
+  "hybrid_fusion_and_shared_blackout": true,
+  "planner_errors": [],
+  "results": [
+    {
+      "mode": "lidar_match",
+      "scenarios": 4,
+      "safety_pass": 4,
+      "mean_ate_m": 0.12705,
+      "total_map_replans": 0,
+      "total_replan_failures": 0,
+      "total_lidar_corrections": 70
+    }
+  ],
+  "caution": [
+    "No true simultaneous mapping: exact static prior geometry available",
+    "IMU measurements simulated from native velocity finite differences, with Gaussian noise and drift",
+    "Initial launch location known and yaw/rotor-attitude loop still use ideal native physics",
+    "3D scan matching uses 48 synthetic rays with AABB buildings, no moving pedestrians/vehicles",
+    "Only heavy UAV, two new cities and mild disturbance; not real-world validation",
+    "A* replanning uses estimated XYZ and heuristic covariance proxy, not proven consistent Gaussian uncertainty",
+    "Unsafe/incomplete flights remain explicit in outcome; no optimistic packet replay for them"
+  ]
+}
