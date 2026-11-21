@@ -86,3 +86,14 @@ The map-known A* planner can conservatively inflate obstacle clearance by three 
 - Joint autonomy: tune an objective for critical-alert missed-deadline risk, full mission energy, localization uncertainty, and collision risk on training scenarios, then evaluate WITHOUT threshold tuning on genuinely unseen scenes.
 - Academic: verify whether the experimental-paper title and scope remains within the accepted review abstract's conference permission; keep the paper including all figures and references <=8 pages.
 
+
+## Phase 6: unseen-city and GPS-free localization evaluation (21 November 2026)
+
+- Two initially unseen city seeds (94103, 58241): 8/8 safe native MuJoCo flights, 192 actual LoRa-replay trials; results/unseen_city.
+- Two further replication seeds (15193, 77099): 8/8 safe native MuJoCo flights, another 192 LoRa trials; results/unseen_city_replication. All flights are conditional on mild deterministic disturbances, a perfectly known map, and an assumed 0.10 m localization sigma. The joint deadline-energy policy does NOT consistently outperform shortest-route adaptive LoRa.
+- In results/localization_stress, drifting noisy XY estimates are fed into the physical controller. 32 runs give safety passes of 8/8, 8/8, 7/8 and 3/8 at Brownian drift 0, .01, .03, .06 m/sqrt(s). Mean truth-referenced ATE rises to 1.039 m at highest drift. The static planning covariance is an external assumption, not a learned state estimator.
+- Map-aided two-dimensional scan matching is now supported by mars_lora/lidar_map_matching.py and the native MuJoCo controller. Sixteen horizontal simulated range beams (25 m cap) are matched to known city AABBs every 2 s, accepting only geometrically consistent correction candidates.
+- Results/lidar_map_matching contains 32 matched flights. At drift .03, dead-reckoning ATE 0.369 m and safety 7/8 versus LiDAR ATE 0.099 m and safety 8/8. At drift .06, dead-reckoning ATE 1.039 m and safety 3/8 versus LiDAR ATE 0.122 m and safety 8/8.
+- IMPORTANT: the LiDAR matcher is GPS-free MAP-AIDED LOCALIZATION, NOT simultaneous mapping or validated GPS-denied autonomy. It assumes exact prior buildings, ideal attitude and velocity signals, synthetic range returns and previously explored cities. High-altitude horizontal sensing may become unobservable. None of these 32 trials establishes real sensor robustness or field safety.
+
+Next work: measured IMU/velocity uncertainty and 3D LiDAR/visual-inertial pose fusion; unknown-map exploration and loop closure; independent city distributions, wind, moving obstacles and real LoRa and propulsion energy calibration. Require a frozen joint deadline/energy policy with real-time failure detection before claiming robust GPS-less urban flight.
