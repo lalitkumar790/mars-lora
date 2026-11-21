@@ -17,6 +17,7 @@ from mars_lora.urban_scene import add_city_mjcf
 from mars_lora.rf_astar import SOLIDS, INDUSTRIAL, signed_clearance as full_city_clearance
 from mars_lora.urban_scene import city, CITY_SEED
 from mars_lora.lidar_map_matching import observe_scan,match_scan
+from mars_lora.lidar_imu3d import InertialMapEstimator, simulate_scan
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -72,10 +73,10 @@ def quat_to_rpy(q):
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
-        localization_seed=0,localization_mode='drift'):
+        localization_seed=0,localization_mode='drift',dynamic_replanning=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
-    if localization_mode not in ('drift','lidar_match'):
+    if localization_mode not in ('drift','lidar_match','lidar_imu3d'):
         raise ValueError('Unknown navigation localization mode')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
@@ -103,6 +104,13 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     lidar_rng=random.Random(localization_seed+991)
     localization_bias=[0.,0.]
     map_correction=[0.,0.]
+    inertial=None
+    imu_last_velocity=[float(x) for x in data.qvel[:3]]
+    map_replans=map_replan_failures=localization_lost_events=0
+    last_replan_time=-100.
+    if localization_mode=='lidar_imu3d':
+        inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
+        inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
     lidar_accepted=lidar_rejected=0
     next_lidar_time=1.0
     localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
@@ -117,9 +125,38 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if localization_drift_m_sqrt_s:
                 for axis in (0,1):
                     localization_bias[axis]+=localization_drift_m_sqrt_s*math.sqrt(localization_dt)*localization_rng.gauss(0.,1.)
-            raw_xy=tuple(float(p[axis])+localization_bias[axis]+(
-                localization_noise_sigma_m*localization_rng.gauss(0.,1.)
-                if localization_noise_sigma_m else 0.) for axis in (0,1))
+            if localization_mode=='lidar_imu3d':
+                # Synthetic IMU packet is generated from *finite differenced*
+                # native velocity plus independent seeded sensor perturbation.
+                # The estimator/controller only consume the noisy packet.
+                # No ground-truth XY or body velocity enters this controller.
+                measured_accel=[
+                    (float(v[i])-imu_last_velocity[i])/localization_dt
+                    +localization_bias[i] if i<2 else
+                    (float(v[i])-imu_last_velocity[i])/localization_dt
+                    for i in range(3)]
+                measured_accel=[a+localization_rng.gauss(0.,.035)
+                                for a in measured_accel]
+                for axis in range(3):imu_last_velocity[axis]=float(v[axis])
+                inertial.predict(measured_accel,
+                                float(v[5])+localization_rng.gauss(0.,.003),
+                                localization_dt)
+                if t>=next_lidar_time:
+                    reading=simulate_scan(tuple(float(x) for x in p[:3]),
+                                          yaw,scene_solids,lidar_rng,
+                                          noise_sigma=.06,dropout=.03)
+                    accepted,scan_score,hits=inertial.correct(reading,scene_solids)
+                    if accepted:lidar_accepted+=1
+                    else:lidar_rejected+=1
+                    next_lidar_time+=2.
+                raw_xy=(inertial.position[0],inertial.position[1])
+                nav_xyz=tuple(inertial.position)
+                nav_velocity=tuple(inertial.velocity)
+                nav_yaw=inertial.yaw
+            else:
+                raw_xy=tuple(float(p[axis])+localization_bias[axis]+(
+                    localization_noise_sigma_m*localization_rng.gauss(0.,1.)
+                    if localization_noise_sigma_m else 0.) for axis in (0,1))
             if localization_mode=='lidar_match' and t>=next_lidar_time:
                 scan=observe_scan((float(p[0]),float(p[1])),yaw,float(p[2]),
                                   scene_solids,lidar_rng,noise_sigma=.06)
@@ -132,14 +169,38 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     lidar_accepted+=1
                 else:lidar_rejected+=1
                 next_lidar_time+=2.0
-            nav_xy=(raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1])
-            navigation_error=math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1])
+            nav_xy=(raw_xy if localization_mode=='lidar_imu3d' else
+                    (raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1]))
+            if localization_mode!='lidar_imu3d':
+                nav_xyz=(nav_xy[0],nav_xy[1],float(p[2]))
+                nav_velocity=tuple(float(x) for x in v[:3])
+                nav_yaw=yaw
+            navigation_error=(math.dist(nav_xyz,p[:3]) if localization_mode=='lidar_imu3d'
+                              else math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1]))
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
             target=waypoints[idx]
-            delta=[target[0]-nav_xy[0],target[1]-nav_xy[1],target[2]-p[2]]
-            speed3=math.sqrt(sum(v[i]*v[i] for i in range(3)))
+            if localization_mode=='lidar_imu3d' and dynamic_replanning and (
+                inertial.sigma_m>.20 and t-last_replan_time>24. and
+                map_replans<3 and idx<len(waypoints)-1):
+                # Dynamic uncertainty-triggered map-known A*: the estimator
+                # drives start XYZ; truth is NEVER used for replanning.
+                from mars_lora.rf_astar import plan
+                try:
+                    updated=plan('shortest',solids=scene_solids,
+                        start_xyz=tuple(nav_xyz),goal_xyz=tuple(waypoints[-1]),
+                        radius=(.08 if airframe=='crazyflie' else .32),
+                        localization_sigma_m=min(.45,inertial.sigma_m),
+                        max_nodes=16000)
+                    waypoints=[tuple(nav_xyz)]+updated.points[1:]
+                    idx=1;map_replans+=1
+                    target=waypoints[idx]
+                except (RuntimeError,ValueError,AssertionError):
+                    map_replan_failures+=1
+                last_replan_time=t
+            delta=[target[i]-nav_xyz[i] for i in range(3)]
+            speed3=math.sqrt(sum(nav_velocity[i]**2 for i in range(3)))
             if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
                 if controller_mode=='integral_guard':
@@ -157,7 +218,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 lead=clamp(along+lookahead,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
-            rising=target[2]>=6.8 and p[2]<target[2]-.35
+            rising=target[2]>=6.8 and nav_xyz[2]<target[2]-.35
             desired[0]=nav_xy[0] if rising else goalx
             desired[1]=nav_xy[1] if rising else goaly
             desired[2]=target[2]
@@ -189,8 +250,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
             xi=x_integral if controller_mode=='integral_guard' else 0.
             yi=y_integral if controller_mode=='integral_guard' else 0.
-            ax=clamp(gain*(desired[0]-nav_xy[0])-damping*v[0]+.9*xi,-accel_limit,accel_limit)
-            ay=clamp(gain*(desired[1]-nav_xy[1])-damping*v[1]+.9*yi,-accel_limit,accel_limit)
+            ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
+            ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
             if controller_mode in ('barrier_guard','barrier_ttc'):
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
@@ -227,12 +288,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                             if size>accel_limit:
                                 ax*=accel_limit/size;ay*=accel_limit/size
                             safety_holds+=1
-            bx=math.cos(yaw)*ax+math.sin(yaw)*ay
-            by=-math.sin(yaw)*ax+math.cos(yaw)*ay
+            bx=math.cos(nav_yaw)*ax+math.sin(nav_yaw)*ay
+            by=-math.sin(nav_yaw)*ax+math.cos(nav_yaw)*ay
             rt=clamp(-by/9.81,-tilt_limit,tilt_limit)
             pt=clamp(bx/9.81,-tilt_limit,tilt_limit)
             tilt_factor=max(.8,math.cos(roll)*math.cos(pitch))
-            force=mass*clamp((9.81+3*(desired[2]-p[2])-2.9*v[2])/tilt_factor,1,18)
+            force=mass*clamp((9.81+3*(desired[2]-nav_xyz[2])-2.9*nav_velocity[2])/tilt_factor,1,18)
             mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
             my=moment_scale*clamp(.95*(pt-pitch)-.32*v[4],-.55,.55)
             arms=((armx,army),(armx,-army),(-armx,-army),(-armx,army)) if airframe=="crazyflie" else ((-armx,-army),(-armx,army),(armx,army),(armx,-army))
@@ -276,6 +337,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 localization_measurement_sigma_m=localization_noise_sigma_m,
                 localization_seed=localization_seed,
                 localization_mode=localization_mode,
+                dynamic_replanning=dynamic_replanning,
+                map_replans=map_replans,map_replan_failures=map_replan_failures,
+                estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
                 safety_holds=safety_holds,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
