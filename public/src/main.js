@@ -581,9 +581,10 @@ async function initialize(){
   report('MuJoCo WebAssembly engine initialized, model compiled ('+model.nbody+' bodies).');
   report('Use Take off, waypoint mission, or manual controls.');
   $('cadState').textContent='Loading original CAD mesh…';
-  loadAirframeCAD(drone,airframe,rotors,report)
-    .then(()=>$('cadState').textContent='CAD READY: original '+(airframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' visual mesh')
-    .catch(e=>{$('cadState').textContent='CAD LOAD FAILED: '+e.message;report('CAD load fallback: '+e.message);});
+  const expectedAirframe=airframe;
+  loadAirframeCAD(drone,expectedAirframe,rotors,report)
+    .then(loaded=>{if(loaded&&airframe===expectedAirframe)$('cadState').textContent='CAD READY: original '+(expectedAirframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' visual mesh';})
+    .catch(e=>{if(airframe===expectedAirframe)$('cadState').textContent='CAD LOAD FAILED: '+e.message;report('CAD load fallback: '+e.message);});
  }catch(error){
   console.error(error);status('PHYSICS FAILED','#ff6f81');
   $('help').hidden=false;$('help').textContent='Unable to load MuJoCo WebAssembly: '+error.message+'. Check browser WebGL/WebAssembly support and refresh.';
@@ -598,7 +599,11 @@ $('airframe').addEventListener('change',async e=>{
  status('RECOMPILING AIRFRAME','#f0b764');
  try{
   model=mujoco.MjModel.from_xml_string(withCity(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML)));
-  loadAirframeCAD(drone,airframe,rotors,report).catch(e=>report('CAD load fallback: '+e.message));
+  $('cadState').textContent='Loading original '+(airframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' CAD…';
+  const expectedAirframe=airframe;
+  loadAirframeCAD(drone,expectedAirframe,rotors,report)
+   .then(loaded=>{if(loaded&&airframe===expectedAirframe)$('cadState').textContent='CAD READY: original '+(expectedAirframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' visual mesh';})
+   .catch(e=>{if(airframe===expectedAirframe)$('cadState').textContent='CAD LOAD FAILED: '+e.message;report('CAD load fallback: '+e.message);});
   data=new mujoco.MjData(model);
   ({mass_kg:mjMass,rotor_x_m:armX,rotor_y_m:armY,max_rotor_thrust_N:modelThrustMax}=PHYSICAL_AIRFRAMES[airframe]);
   momentScale=airframe==='crazyflie'?(2.3951e-5/.019):1;
