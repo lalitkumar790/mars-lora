@@ -4,10 +4,10 @@ import { LiveLink } from './link.js';
 import { PlanarSLAM,yawOfQuaternion } from './slam.js';
 import {withNativeLidar,nativeScan,obstacleScan} from './mujoco_lidar.js';
 import {loadAirframeCAD,PHYSICAL_AIRFRAMES} from './airframes.js';
-import {withCity,addCityToScene,CITY_BUILDINGS} from './city.js';
+import {withCity,addCityToScene,regenerateCity,CITY_BUILDINGS,ACTIVE_CITY_SEED} from './city.js';
 import {WaypointTracker} from './trajectory.js';
 import {scanHazard} from './avoidance.js';
-import {planInteractiveRoute,predictCoverage} from './rf_route_planner.js';
+import {planInteractiveRoute,predictCoverage,randomUrbanGoal} from './rf_route_planner.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -16,10 +16,10 @@ import wasmUrl from '@mujoco/mujoco/mujoco.wasm?url';
 
 const $ = id => document.getElementById(id);
 const scene = new THREE.Scene();
-addCityToScene(scene);
+let cityGroup=addCityToScene(scene);
 scene.background = new THREE.Color(0x0a1725);
-scene.fog = new THREE.FogExp2(0x0a1725, 0.012);
-const camera = new THREE.PerspectiveCamera(52, 1, .03, 150);
+scene.fog = new THREE.FogExp2(0x0a1725, 0.006);
+const camera = new THREE.PerspectiveCamera(52, 1, .03, 260);
 camera.up.set(0, 0, 1);
 camera.position.set(8, -12, 9);
 const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
@@ -38,10 +38,10 @@ sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera,{ left:-22,right:22,top:22,bottom:-22,near:1,far:70 });
 scene.add(sun);
 
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({color:0x142b39, roughness:.95}));
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({color:0x142b39, roughness:.95}));
 ground.receiveShadow=true;
 scene.add(ground);
-const grid = new THREE.GridHelper(90, 45, 0x25475b, 0x213a4b);
+const grid = new THREE.GridHelper(185, 37, 0x25475b, 0x213a4b);
 grid.rotation.x=Math.PI/2;
 grid.position.z=.006;
 scene.add(grid);
@@ -114,7 +114,7 @@ for(let i=0;i<waypointPositions.length;i++){
 let airframe='heavy', mjMass=1.325, armX=.14,armY=.18, momentScale=1, modelThrustMax=13;
 let visualInitialized=false;
 const pathTracker=new WaypointTracker();let pathError=0,speedReference=0;
-let currentPlan=null;
+let currentPlan=null,previousUrbanGoal=null,urbanMissionCounter=0,missionCitySeed=ACTIVE_CITY_SEED;
 let sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};let hazard={blocked:false,distance:Infinity};let obstacleHoldTime=0;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
@@ -141,6 +141,30 @@ function quatToRPY(q) {
 }
 function setMode(next){flightMode=next;$('flightmode').textContent=next.toUpperCase();report(next);}
 function goTo(index){waypointIndex=index;report('Navigating to waypoint '+(index+1));}
+function regenerateScenario(seed){
+ if(!mujoco)throw Error('Physics engine is not initialized');
+ ready=false;paused=true;mission=false;
+ const newBuildings=regenerateCity(seed);
+ if(cityGroup){
+   scene.remove(cityGroup);
+   cityGroup.traverse(obj=>{if(obj.isMesh||obj.isInstancedMesh){obj.geometry?.dispose();obj.material?.dispose();}});
+ }
+ cityGroup=addCityToScene(scene,newBuildings);
+ const xml=withCity(withNativeLidar(airframe==='crazyflie'?crazyflieXML:quadXML),newBuildings);
+ const nextModel=mujoco.MjModel.from_xml_string(xml);
+ if(!nextModel)throw Error('MuJoCo failed to build randomized city');
+ model=nextModel;data=new mujoco.MjData(model);
+ mujoco.mj_forward(model,data);
+ rotorState=Array(4).fill(mjMass*9.81/4);
+ desired=[0,0,.5];accumulator=0;
+ pathTracker.reset();hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
+ radio.reset();lastRadio=-1;flightLog=[];lastLog=lastUi=lastTrace=0;
+ tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
+ slam.reset();slamLog.length=0;lastScan=-1;previousYaw=null;lastObservableTime=0;
+ missionCitySeed=seed;ready=true;paused=false;status('PHYSICS ONLINE');controller();updateUI();
+ $('cityStats').textContent=newBuildings.length+' collidable buildings · seed '+seed+' · wide streets and open parks';
+ report('Fresh city and MuJoCo collision geometry built from seed '+seed);
+}
 function setTarget(axis,direction){
  if(!ready || paused)return;
  mission=false;desired[axis]=snap(desired[axis]+direction,-14,14);
@@ -165,7 +189,7 @@ function controller(){
  }
  const target=waypointPositions[waypointIndex];
  const guidance=pathTracker.update(waypointIndex,waypointPositions,[nx,ny],missionSpeed);
- const rising=target[2]>=transitAltitude && pos[2]<transitAltitude-.35;
+ const rising=target[2]>=3.8 && pos[2]<target[2]-.35;
  // Continuous path targeting: project onto path segment, look ahead,
  // and slow down as the segment end approaches (rather than chase points).
  desired[0]=rising?nx:guidance.target[0];
@@ -176,7 +200,7 @@ function controller(){
  // Rangefinder-only collision supervisor: forward sector blocks movement
  // in the direction of the mission. Safety check on MuJoCo truth remains
  // a separate research oracle and is not fed to guidance.
- if(hazard.blocked){
+ if(hazard.blocked && pos[2]>1.6 && !rising){
    mission=false;
    desired=[nx,ny,pos[2]];
    obstacleHoldTime=data.time;
@@ -227,7 +251,7 @@ function controller(){
    mission=false;desired=[nx,ny,Math.max(pos[2],3.2)];
    setMode('Localization lost — hold');
    report('GPS-denied navigation stopped: no usable LiDAR landmarks for over 12 simulated seconds.');
- }else if(mission && (clearance.distance<.25 || data.ncon>0)){
+ }else if(mission && (clearance.distance<.25 || (data.ncon>0 && pos[2]>1.0))){
    mission=false;
    desired=[pos[0],pos[1],Math.max(pos[2],transitAltitude)];
    setMode('Safety hold — clearance breach');
@@ -275,7 +299,7 @@ function updateUI(){
  $('slamError').textContent=slamTruthError.toFixed(2)+' m';
  $('slamCorrections').textContent=String(slam.matches);
  $('obstacleStatus').textContent='Horizontal LiDAR: '+(Number.isFinite(hazard.distance)?hazard.distance.toFixed(2)+'m':'clear')+' forward · down-tilted roof scan '+(Number.isFinite(sensedObstacles.nearest)?sensedObstacles.nearest.toFixed(2)+'m':'clear')+' · '+sensedObstacles.valid+' returns. '+(hazard.blocked?'BRAKE REQUEST':'No frontal hazard');
- $('cityStats').textContent=CITY_BUILDINGS.length+' physical buildings · deterministic urban canyon · original CAD airframes';
+ $('cityStats').textContent=CITY_BUILDINGS.length+' collidable city buildings · seed '+missionCitySeed+' · wide avenues and parks';
  $('slamStatus').textContent=slam.lastHits<4?'LOW OBSERVABILITY: horizontal 2D scan sees too few nearby surfaces at current altitude. Odometry drift can accumulate.':'Mapping returns '+slam.lastHits+' / '+(slam.lastScan?.ranges.length??0)+', local scan match score '+slam.lastFitness.toFixed(2)+', map coverage '+slam.occupancyPercentage().toFixed(1)+'%.';
  drawSLAMMap();
  $('xpos').textContent=x.toFixed(2);$('ypos').textContent=y.toFixed(2);$('zpos').textContent=z.toFixed(2);
@@ -449,20 +473,32 @@ on('mission',()=>{
  if(!ready)return;
  const kind=$('missionType').value;
  if($('navSource').value==='slam' && kind!=='mapping'){
-   report('GPS-denied city flight refused: 2D LiDAR SLAM has not been validated for high-altitude urban 3D navigation. Select landmark survey or use the map-known physics-reference mode.');return;
+   $('navSource').value='truth';
+   report('A* requires map-known reference navigation: automatically switched away from experimental 2D GPS-denied SLAM. This is not GPS-free flight.');
  }
  const isAStar=kind==='astar_shortest'||kind==='astar_rf';
  let route=kind==='mapping'?mappingWaypoints:missionWaypoints;
  if(isAStar){
    try{
-      currentPlan=planInteractiveRoute(kind==='astar_rf'?'rf_aware':'shortest',airframe==='crazyflie'?.08:.32);
+      // New urban blocks and new destination for EVERY click. First reset
+      // MuJoCo with the same collision geometry the A* planner observes.
+      const seed=Math.floor(Math.random()*0x100000000)>>>0;
+      regenerateScenario(seed);
+      const goal=randomUrbanGoal(previousUrbanGoal);
+      currentPlan=planInteractiveRoute(kind==='astar_rf'?'rf_aware':'shortest',airframe==='crazyflie'?.08:.32,{goal});
+      previousUrbanGoal=goal;urbanMissionCounter++;
       route=currentPlan.route;
-      $('plannerStats').textContent='Computed '+currentPlan.method+' 3D A* with '+currentPlan.expanded+' expanded nodes; altitude, clearance and predicted LoRa path loss are checked over the physics city.';
+      $('missionIdentity').textContent='Flight #'+urbanMissionCounter+' · city seed '+seed+' · goal '+goal.map(v=>v.toFixed(0)).join(', ')+' m';
+      $('plannerStats').textContent='NEW randomized '+currentPlan.method+' mission #'+urbanMissionCounter+'; goal '+currentPlan.goal.join(', ')+'m · '+currentPlan.expanded+' A* expansions. City and physics colliders regenerated together.';
       $('planDistance').textContent=currentPlan.length_m.toFixed(1)+' m';
       $('planClearance').textContent=currentPlan.clearance.toFixed(2)+' m';
       $('planRF').textContent=(currentPlan.coverage.reduce((a,b)=>a+b,0)/currentPlan.coverage.length*100).toFixed(0)+'%';
+      $('plannerStatus').textContent='ROUTE READY: automatically climbing to 4 m, then following a new collision-checked path.';
+      paused=false;status('PHYSICS ONLINE');
+      
+
    }catch(error){
-      report('A* planner refused mission: '+error.message);return;
+      $('plannerStatus').textContent='A* failed: '+error.message;report('A* planner refused mission: '+error.message);return;
    }
  }else{
    currentPlan=null;$('planDistance').textContent='—';$('planClearance').textContent='—';
@@ -471,10 +507,10 @@ on('mission',()=>{
  if(!isAStar && plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
    report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
  }
- mission=true;pathTracker.reset();goTo(0);
+ hazard={blocked:false,distance:Infinity};mission=true;pathTracker.reset();goTo(0);
  if(isAStar){
    setMode(currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
-   report('Map-known 3D plan '+currentPlan.length_m.toFixed(1)+' m; conservative static clearance '+currentPlan.clearance.toFixed(2)+' m. Browser packets remain a synthetic model.');
+   report('Running randomized map-known 3D route '+currentPlan.length_m.toFixed(1)+' m. City seed '+missionCitySeed+'; ground-truth position is used for this A* demonstration.');
  }else if($('missionType').value==='mapping'){
    setMode('GPS-denied landmark survey');
    report('3.2 m mapping survey: LiDAR returns from vertical landmarks support occupancy mapping. Navigation source: '+$('navSource').value+'.');
