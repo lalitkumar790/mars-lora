@@ -94,9 +94,16 @@ class Route:
     objective: float
 
 def plan(name="shortest",gcs=GCS,radius=.32,margin=.55,
-         max_nodes=12000,max_lateral=33):
+         max_nodes=12000,max_lateral=33,localization_sigma_m=0.):
+    """Map-known oracle path; sigma only inflates geometric exclusion.
+
+    sigma is a supplied position error standard deviation. The planner
+    does not estimate it from SLAM or implement chance-constrained dynamics.
+    """
     if name not in ("shortest","rf_aware"):raise ValueError("Unknown method")
-    if radius<=0 or margin<0:raise ValueError("Invalid clearance")
+    if radius<=0 or margin<0 or not math.isfinite(localization_sigma_m) or localization_sigma_m<0:
+        raise ValueError("Invalid clearance or localization uncertainty")
+    margin=margin+3.*localization_sigma_m
     start=(0,0,nearest_k(START[2]))
     goal=(-10,8,nearest_k(GOAL[2]))
     def safe_node(n):
