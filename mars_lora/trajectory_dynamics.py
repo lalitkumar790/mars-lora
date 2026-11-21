@@ -79,12 +79,14 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
     # based on its narrowest clearance; guard adds braking + actuation lag.
     effort=braking_m_s2-wind_accel_bound_m_s2
     attempts=0
+    reasons={'unsafe_endpoint':0,'invalid_astar':0,'connector_clearance':0,'braking_budget':0,'time_budget':0,'no_anchors':0}
     feasible=[]
     for alt in altitude_candidates:
         if alt<=max(start[2],goal[2]):
             continue
         starts=_anchors(start,solids,radius,required,alt)
         goals=_anchors(goal,solids,radius,required,alt)
+        if not starts or not goals: reasons['no_anchors']+=1
         # Deterministic bounded paired search, with same-coordinate vertical
         # staging preferred over longer low-altitude lateral motion.
         pairs=sorted(((a[0]+b[0],a,b) for a in starts[:7] for b in goals[:7]),
@@ -96,6 +98,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
                     radius=radius,margin=geometric_margin_m,
                     localization_sigma_m=sigma_m,max_nodes=16000)
             except (ValueError,RuntimeError,AssertionError):
+                reasons['invalid_astar']+=1
                 continue
             candidate=[tuple(start),sa[1],sa[2],*transit.points,ga[2],ga[1],tuple(goal)]
             points=[]
@@ -106,6 +109,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
             # Check *all* continuous connectors, including lattice snapping.
             clearance=path_clearance(points,radius=radius,solids=solids)
             if clearance<required-1.e-6:
+                reasons['connector_clearance']+=1
                 continue
             available=max(0.,clearance-required)
             # Delay + stopping offset must remain within the unconsumed map
@@ -119,6 +123,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
                     hi=mid
             speed=min(max_speed_m_s,lo)
             if speed<.18: # infeasible tracking speed, not an admissible path
+                reasons['braking_budget']+=1
                 continue
             speed_caps=[0.]*len(points)
             speed_caps[0]=0.;speed_caps[-1]=0.
@@ -142,6 +147,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
                 average=max(.10,min(speed,(speed_caps[i-1]+speed_caps[i])/2))
                 times.append(times[-1]+d/average)
             if times[-1]>240.:
+                reasons['time_budget']+=1
                 continue
             length=sum(math.dist(a,b) for a,b in zip(points,points[1:]))
             feasible.append((length,transit.objective,TimedRoute(
@@ -154,7 +160,7 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
         if len(feasible)>=2:
             break
     if not feasible:
-        raise RuntimeError('No dynamically screened exact-endpoint trajectory')
+        raise RuntimeError(f'No dynamically screened exact-endpoint trajectory: attempts={attempts}, rejection_counts={reasons}')
     feasible.sort(key=lambda row:(row[0]+.05*row[1],-row[2].min_static_clearance_m))
     chosen=feasible[0][2]
     return TimedRoute(chosen.points,chosen.waypoint_speed_limits_m_s,
