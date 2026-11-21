@@ -20,6 +20,20 @@ The earlier native UAV controller used oracle map, heading, velocity and ground-
 - V4 (results/imu3d_replanning_v4): checking the spliced first grid waypoint reduced neither the localized tracking issues nor the contact risk sufficiently: hybrid with replanning still passed only 1/4. Actual clearance and native contacts, not route pictures, determine success.
 - V5 is a paired control ablation that compares 2D known-map baseline, 3D hybrid WITHOUT replanning, and 3D hybrid WITH stricter clearance/speed-gated replanning. Its safety result must be inspected before approving any new controller.
 
+## V5 verified controlled ablation — stop/go result
+
+The corrected, predeclared hybrid comparison completed 12 native MuJoCo cases under the same two procedurally unseen city seeds (91311, 20483), heavy aircraft, both route types, and a 30-second LiDAR blackout (t=45–75 s). The corresponding GitHub Actions workflow **passed** and published results/imu3d_replanning_v5/summary.json and trials.csv.
+
+| Policy | Physical safety (4 flights) | Mean ATE (m) | Accepted replan count |
+|---|---:|---:|---:|
+| 2D map-aided scan matching, no replan | 4/4 | 0.1271 | 0 |
+| 3D LiDAR/IMU + noisy barometer/flow, no replan | 1/4 | 0.1880 | 0 |
+| Same hybrid with clearance/speed-gated A* replan | 1/4 | 0.1708 | 7 |
+
+These are development scenarios after inspecting the failed V1–V4 results, not independent confirmatory data. Some missions reached the destination but had building contacts or insufficient clearance, and **do not count** as safe. Mean trajectory ATE is not a proxy for rare near-wall errors. In particular, the joint estimator and proposed replan policy do NOT meet the research safety acceptance criterion.
+
+**Decision:** retain the 2D map-aided reference mode; reject promotion of the current 3D LiDAR/IMU hybrid and dynamic replan controller. The next research design must predict vehicle tracking envelopes from actual dynamics (including braking, momentum, wind, rotor lag and sensor-tail uncertainty), validate every spliced segment, and have safe-hold/relocalization protocols when observations become insufficient. Freeze controller gains before running NEW cities and adversarial scene distributions. No real flight or calibrated sensor claim is justified.
+
 ## Scientific limitations and next gates
 
 1. The system has not implemented unknown-map 3D SLAM, IMU bias estimation with a consistent covariance, graph optimization/loop closure or full sensor frame calibration.
