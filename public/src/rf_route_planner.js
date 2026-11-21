@@ -5,7 +5,7 @@
  */
 import {CITY_BUILDINGS} from './city.js';
 import {obstacles} from './mission.js';
-const SCENE=[...obstacles,...CITY_BUILDINGS];
+const getScene=()=>[...obstacles,...CITY_BUILDINGS];
 export const AIRSPACE_GCS=[230,220,120];
 export const AIRSPACE_GOAL=[-30,24,4];
 const levels=[4,7,10,13,17,21,26],spacing=3;
@@ -13,7 +13,7 @@ const pOf=([i,j,k])=>[i*spacing,j*spacing,levels[k]];
 const key=n=>n.join(',');
 const signedClearance=p=>{
  let best=Infinity;
- for(const b of SCENE){
+ for(const b of getScene()){
   const dx=Math.max(Math.abs(p[0]-b.x)-b.hx,0),dy=Math.max(Math.abs(p[1]-b.y)-b.hy,0),dz=Math.max(Math.abs(p[2]-b.z)-b.hz,0);
   const distance=(dx||dy||dz)?Math.hypot(dx,dy,dz):
     -Math.min(b.hx-Math.abs(p[0]-b.x),b.hy-Math.abs(p[1]-b.y),b.hz-Math.abs(p[2]-b.z));
@@ -35,7 +35,7 @@ function rayBox(a,b,box){
  return lo<.999&&hi>.001;
 }
 export function predictCoverage(p,station=AIRSPACE_GCS){
- const blockage=SCENE.some(b=>rayBox(p,station,b));
+ const blockage=getScene().some(b=>rayBox(p,station,b));
  const d=Math.max(1,Math.hypot(p[0]-station[0],p[1]-station[1],p[2]-station[2]));
  const rssi=14-31.2-40*Math.log10(d)-(blockage?17:0);
  const sensitivity=-129;
@@ -54,11 +54,13 @@ export function checkRoute(route,radius=.32,buffer=.55){
  }
  return {safe:min>=buffer-.001,clearance:min};
 }
-export function planInteractiveRoute(method='shortest',radius=.32){
+export function planInteractiveRoute(method='shortest',radius=.32,options={}){
  if(!['shortest','rf_aware'].includes(method))throw Error('Unsupported planner');
- const start=[0,0,0],goal=[-10,8,0],margin=.55;
+ const start=[0,0,0],margin=.65;
+ const goalPosition=options.goal??AIRSPACE_GOAL;
+ const goal=[Math.round(goalPosition[0]/spacing),Math.round(goalPosition[1]/spacing),0];
  const nodeSafe=n=>{
-  if(Math.abs(n[0])>11||Math.abs(n[1])>11||n[2]<0||n[2]>=levels.length)return false;
+  if(Math.abs(n[0])>22||Math.abs(n[1])>22||n[2]<0||n[2]>=levels.length)return false;
   return signedClearance(pOf(n))>=radius+margin;
  };
  const safeEdge=(a,b)=>{
@@ -78,7 +80,7 @@ export function planInteractiveRoute(method='shortest',radius=.32){
   frontier.sort((a,b)=>b.f-a.f);
   const cur=frontier.pop();
   if(cur.g>nodes.get(key(cur.n)).g+1e-8)continue;
-  expanded++;if(expanded>12000)throw Error('Planner budget exceeded');
+  expanded++;if(expanded>16000)throw Error('Planner budget exceeded');
   if(key(cur.n)===key(goal))break;
   for(const [dx,dy,dz] of [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]){
    const n=[cur.n[0]+dx,cur.n[1]+dy,cur.n[2]+dz];
@@ -108,6 +110,24 @@ export function planInteractiveRoute(method='shortest',radius=.32){
  const check=checkRoute(route,radius,margin);
  if(!check.safe)throw Error('Path violates obstacle clearance');
  const length=route.slice(1).reduce((s,p,i)=>s+Math.hypot(...p.map((v,j)=>v-route[i][j])),0);
- return {route,method,expanded,clearance:check.clearance,length_m:length,
+ return {route,method,expanded,clearance:check.clearance,length_m:length,goal:pOf(goal),
    coverage:route.map(p=>predictCoverage(p).p)};
+}
+
+/** Choose a safe goal with a non-repeating direction and varying distance.
+ * Uses the live collision geometry, so all random goals are physically valid.
+ * The random generation is not used by published fixed-seed comparisons.
+ */
+export function randomUrbanGoal(previous=null,random=Math.random){
+ const choices=[];
+ for(let i=-18;i<=18;i+=2)for(let j=-18;j<=18;j+=2){
+   const radius=Math.hypot(i*spacing,j*spacing);
+   if(radius<24||radius>67)continue;
+   const p=[i*spacing,j*spacing,4];
+   if(previous&&Math.hypot(p[0]-previous[0],p[1]-previous[1])<12)continue;
+   if(signedClearance(p)<1.8)continue;
+   choices.push(p);
+ }
+ if(!choices.length)throw Error('No open airspace destinations in this city');
+ return choices[Math.floor(random()*choices.length)];
 }
