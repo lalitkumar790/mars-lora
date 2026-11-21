@@ -58,7 +58,7 @@ export function simulateScan(truth, {beams=48,maxRange=17,seed=0}={}) {
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export class PlanarSLAM {
  constructor({size=100,resolution=.35,seed=314159}={}) {
-   this.size=size;this.resolution=resolution;this.seed=seed;
+   this.initialSize=size;this.size=size;this.resolution=resolution;this.seed=seed;
    this.map=new Float32Array(size*size);
    this.originX=-size*resolution/2;this.originY=-size*resolution/2;
    this.maxSize=1024;this.expansions=0;this.mapLimitReached=false;
@@ -67,7 +67,7 @@ export class PlanarSLAM {
    this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];
    this.initialized=false;this.lastScan=null;
  }
- reset(){this.size=100;this.map=new Float32Array(this.size*this.size);this.originX=-this.size*this.resolution/2;this.originY=this.originX;this.expansions=0;this.mapLimitReached=false;this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
+ reset(){this.size=this.initialSize;this.map=new Float32Array(this.size*this.size);this.originX=-this.size*this.resolution/2;this.originY=this.originX;this.expansions=0;this.mapLimitReached=false;this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
  index(x,y) {
    const gx=Math.floor((x-this.originX)/this.resolution),gy=Math.floor((y-this.originY)/this.resolution);
    return gx>=0&&gy>=0&&gx<this.size&&gy<this.size?gy*this.size+gx:-1;
