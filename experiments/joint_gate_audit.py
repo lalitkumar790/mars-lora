@@ -16,7 +16,8 @@ from experiments.heldout_validation import PROFILES,STATIONS
 METRICS=("pdr","critical_deadline_ratio","aoi_p95_s",
          "outage_fraction","tx_energy_j","mission_duration_s")
 
-def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None):
+def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None,
+             congestion_guard=None):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     routes=json.loads(Path(paths,"routes.json").read_text())
     alternatives={name:record["points"] for name,record in routes.items()}
@@ -35,17 +36,23 @@ def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None):
                     alternatives,pilot["pilot_rssi_dbm"],
                     pilot["observed_channel_busy"],receiver=station,
                     airtime_budget_fraction=airtime_budget_fraction)
-                # Actually replay the jointly chosen fixed SF + priority on
-                # the matching *executed MuJoCo trajectory*. Do not infer
-                # performance from the planner's own predicted score.
-                observed=trial(traces[(airframe,chosen.route)],
+                # High channel occupancy is orthogonal to a path-loss detour.
+                # Safety-first V3 cancels costly detours in high occupancy and
+                # reverts to the established adaptive-SF + priority policy.
+                # No observed outcomes are accessible at selection time.
+                busy_guard=(congestion_guard is not None and
+                            pilot["observed_channel_busy"]>=congestion_guard)
+                actual_route="shortest" if busy_guard else chosen.route
+                selected_sf=None if busy_guard else chosen.spreading_factor
+                observed=trial(traces[(airframe,actual_route)],
                               "priority-adaptive",seed,station,shadow_sigma=5.,
                               profile=profile,spatial_fading=True,
-                              sf_override=chosen.spreading_factor)
+                              sf_override=selected_sf)
                 baseline=matched[(profile_name,airframe,seed,"shortest")]
                 rf_base=matched[(profile_name,airframe,seed,"rf_aware")]
                 row=dict(scenario=profile_name,airframe=airframe,seed=seed,
-                         choice=chosen.route,chosen_sf=chosen.spreading_factor,
+                         choice=actual_route,chosen_sf=selected_sf if selected_sf is not None else 'adaptive',
+                         guard_triggered=busy_guard,
                          observed_pilot_dbm=pilot["pilot_rssi_dbm"],
                          observed_busy_fraction=pilot["observed_channel_busy"],
                          predicted_alert_success=chosen.estimated_alert_success,
@@ -67,7 +74,10 @@ def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None):
             row=dict(scenario=scenario,airframe=airframe,n=len(records),
                      selected_shortest=sum(r["choice"]=="shortest" for r in records),
                      selected_rf=sum(r["choice"]=="rf_aware" for r in records),
-                     average_sf=mean(r["chosen_sf"] for r in records))
+                     guard_triggered=sum(bool(r['guard_triggered']) for r in records),
+                     average_fixed_sf=(mean(float(r['chosen_sf']) for r in records
+                          if r['chosen_sf']!='adaptive') if any(r['chosen_sf']!='adaptive'
+                          for r in records) else 0.))
             for m in METRICS:
                 row[m+"_joint"]=mean(float(r["joint_"+m]) for r in records)
                 row[m+"_short_adaptive"]=mean(float(r["short_adaptive_"+m]) for r in records)
@@ -86,6 +96,7 @@ def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None):
         "scientific_status":"post-hoc development; not independent validation",
         "completed_trials":len(all_rows),
         "airtime_budget_fraction":airtime_budget_fraction,
+        "congestion_guard":congestion_guard,
         "policies":"joint selected route with fixed selected SF and priority scheduling versus both adaptive-SF route baselines",
         "caveats":[
             "Threshold weights chosen after inspecting synthetic channel scenario outcomes",
@@ -105,5 +116,6 @@ if __name__=="__main__":
     p.add_argument("--output",default="results/joint_gate")
     p.add_argument("--seeds",type=int,default=20)
     p.add_argument("--airtime-budget",type=float,default=None)
+    p.add_argument("--congestion-guard",type=float,default=None)
     a=p.parse_args()
-    evaluate(a.flight,a.heldout,a.output,a.seeds,a.airtime_budget)
+    evaluate(a.flight,a.heldout,a.output,a.seeds,a.airtime_budget,a.congestion_guard)
