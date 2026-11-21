@@ -75,17 +75,29 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
-        altitude_slew_m_s=None):
+        altitude_slew_m_s=None,trajectory_speed_limits=None,
+        trajectory_reference=None,online_risk_monitor=False,eskf_shadow=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if eskf_shadow and localization_mode!='lidar_imu3d_hybrid':
+        raise ValueError('ESKF shadow comparison requires native hybrid sensor stream')
     if altitude_slew_m_s is not None and (not math.isfinite(altitude_slew_m_s) or altitude_slew_m_s<=0):
         raise ValueError('Altitude slew rate must be positive and finite')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
+    if trajectory_reference is not None and (
+            dynamic_replanning or trajectory_speed_limits is not None or
+            altitude_slew_m_s is not None or
+            len(trajectory_reference.samples)<2):
+        raise ValueError('Timed reference is exclusive with replanning, slew and waypoint-speed tracking')
+
+    if trajectory_speed_limits is not None and (len(trajectory_speed_limits)!=len(waypoints) or
+        any(not math.isfinite(v) or v<0 for v in trajectory_speed_limits)):
+        raise ValueError('Trajectory speed limits must be finite and align with waypoints')
     root=Path(__file__).resolve().parents[1]
     xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
     model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml,seed=city_seed))
@@ -117,13 +129,25 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
     first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
+    risk_alarm_first=None;risk_alarm_count=0;risk_monitor_checks=0
+    loss_of_confidence_first=None;loss_of_confidence_samples=0
     stopping_envelope_rejections=0
+    reference_start_t=None;reference_index=0;reference_settle_s=None
     accepted_replan_events=[];rejected_replan_events=[]
     last_replan_time=-100.
     replan_anchor_xy=None
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
+    shadow=None
+    shadow_error_squared=0.;shadow_error_max=0.;shadow_samples=0
+    shadow_precontact_squared=0.;shadow_precontact_count=0
+    legacy_precontact_squared=0.;legacy_precontact_count=0
+    shadow_nees_99_inside=0;shadow_scan_accepted=0;shadow_scan_rejected=0
+    shadow_planar_accepted=0;shadow_planar_rejected=0
+    if eskf_shadow:
+        from mars_lora.lidar_imu_eskf import TranslationalESKF
+        shadow=TranslationalESKF.initial(tuple(float(x) for x in data.qpos[:3]))
     lidar_accepted=lidar_rejected=0
     next_lidar_time=1.0
     localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
@@ -152,15 +176,21 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 inertial.predict(measured_accel,
                                 float(v[5])+localization_rng.gauss(0.,.003),
                                 localization_dt)
+                if shadow is not None:
+                    shadow.predict(measured_accel,localization_dt)
                 if localization_mode=='lidar_imu3d_hybrid':
                     # Actual native truth ONLY generates noisy surrogate
                     # barometer and ground-optical-flow sensor observations.
                     z_obs=float(p[2])+localization_rng.gauss(0.,.06)
                     inertial.correct_altitude(z_obs)
+                    if shadow is not None:
+                        shadow.update_altitude(z_obs,std_m=.06)
                     if p[2]<12.:  # flow degenerates above texture/range limit
                         flowx=float(v[0])+localization_rng.gauss(0.,.045)
                         flowy=float(v[1])+localization_rng.gauss(0.,.045)
                         inertial.correct_horizontal_flow(flowx,flowy)
+                        if shadow is not None:
+                            shadow.update_horizontal_flow(flowx,flowy,std_m=.045)
                 if t>=next_lidar_time:
                     blackout=(lidar_blackout_window is not None and
                               lidar_blackout_window[0]<=t<=lidar_blackout_window[1])
@@ -171,6 +201,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         reading=simulate_scan(tuple(float(x) for x in p[:3]),
                                               yaw,scene_solids,lidar_rng,
                                               noise=.06,dropout=.03)
+                        if shadow is not None:
+                            from mars_lora.lidar_imu3d import register_scan
+                            shadow_candidate,shadow_fit,shadow_score,shadow_hits=register_scan(
+                                tuple(shadow.position),inertial.yaw,reading,scene_solids)
+                            if shadow_fit:
+                                check=shadow.update_position(shadow_candidate,std_m=.20)
+                                shadow_scan_accepted+=int(check.accepted)
+                                shadow_scan_rejected+=int(not check.accepted)
+                            else:
+                                shadow_scan_rejected+=1
                         accepted,scan_score,hits=inertial.correct(reading,scene_solids)
                         if accepted:lidar_accepted+=1
                         else:
@@ -186,6 +226,20 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                 corrected,ok,_=match_scan(
                                     prior_xy,inertial.yaw,inertial.position[2],
                                     horizontal,scene_solids)
+                                if shadow is not None:
+                                    # Reuse EXACTLY the planar scan already
+                                    # created for legacy's 3D fallback. No
+                                    # additional random calls or truth enters.
+                                    shadow_xy,shadow_ok,_=match_scan(
+                                        tuple(shadow.position[:2]),inertial.yaw,
+                                        float(shadow.position[2]),horizontal,scene_solids)
+                                    if shadow_ok:
+                                        update=shadow.update_planar_map_position(
+                                            shadow_xy,std_m=.25)
+                                        shadow_planar_accepted+=int(update.accepted)
+                                        shadow_planar_rejected+=int(not update.accepted)
+                                    else:
+                                        shadow_planar_rejected+=1
                                 inertial.correct_planar_lidar(corrected,ok)
                                 if ok:lidar_accepted+=1
                     next_lidar_time+=2.
@@ -222,9 +276,55 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 nav_yaw=yaw
             navigation_error=(math.dist(nav_xyz,p[:3]) if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid')
                               else math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1]))
+            if shadow is not None:
+                # Offline truth is used for scoring only; shadow never
+                # drives control inputs, the baseline estimator or replans.
+                distance=math.dist(shadow.position,p[:3])
+                shadow_error_squared+=distance*distance
+                if first_contact is None:
+                    shadow_precontact_squared+=distance*distance
+                    shadow_precontact_count+=1
+                shadow_error_max=max(shadow_error_max,distance)
+                shadow_samples+=1
+                shadow_nees_99_inside+=int(shadow.position_nees(p[:3])<=11.345)
+            if first_contact is None:
+                legacy_precontact_squared+=navigation_error**2
+                legacy_precontact_count+=1
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
+            if online_risk_monitor:
+                from mars_lora.online_risk_monitor import predict_clearance_alarm
+                sigma=(inertial.sigma_m if inertial is not None else
+                       max(0.,localization_noise_sigma_m))
+                radius=.08 if airframe=='crazyflie' else .32
+                alarm=predict_clearance_alarm(
+                    nav_xyz,nav_velocity,sigma,
+                    lambda q:fast_city_clearance(q,radius,grid=scene_grid))
+                risk_monitor_checks+=1
+                # Independent of estimated map proximity: a sensor model
+                # that cannot support a small pose-error bound must not be
+                # treated as a valid geometric safety supervisor. This is
+                # an experimental warning threshold, not calibrated NEES.
+                if sigma>=.50:
+                    loss_of_confidence_samples+=1
+                    if loss_of_confidence_first is None:
+                        loss_of_confidence_first={
+                           "t_s":round(float(t),3),
+                           "estimated_sigma_m":round(float(sigma),3),
+                           "estimated_xyz":[round(float(v),3) for v in nav_xyz]}
+
+                if alarm.warning:
+                    risk_alarm_count+=1
+                    if risk_alarm_first is None:
+                        risk_alarm_first={
+                            "t_s":round(float(t),3),
+                            "reason":alarm.reason,
+                            "predicted_margin_m":round(float(alarm.predicted_margin_m),3),
+                            "stopping_distance_m":round(float(alarm.stopping_distance_m),3),
+                            "estimated_sigma_m":round(float(sigma),3),
+                            "estimated_xyz":[round(float(a),3) for a in nav_xyz]}
+
             target=waypoints[idx]
             if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') and dynamic_replanning and (
                 inertial.sigma_m>.20 and t-last_replan_time>24. and
@@ -293,7 +393,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 last_replan_time=t
             delta=[target[i]-nav_xyz[i] for i in range(3)]
             speed3=math.sqrt(sum(nav_velocity[i]**2 for i in range(3)))
-            if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
+            if trajectory_reference is None and math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
                 if controller_mode=='integral_guard':
                     x_integral=y_integral=0.
@@ -322,6 +422,37 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 desired[2]+=clamp(target[2]-desired[2],
                                    -.02*altitude_slew_m_s,
                                    .02*altitude_slew_m_s)
+            reference_state=None
+            if trajectory_reference is not None:
+                # Reference time starts only when the UAV has first reached
+                # the reference launch pose. This avoids pretending that the
+                # MuJoCo craft was initialized in hover at z=4m.
+                init=trajectory_reference.samples[0]
+                if reference_start_t is None and (
+                    math.dist(nav_xyz,init.xyz)<.50 and speed3<.65):
+                    reference_start_t=t
+                if reference_start_t is None:
+                    reference_state=init
+                else:
+                    t_ref=max(0.,t-reference_start_t)
+                    samples=trajectory_reference.samples
+                    while (reference_index+1<len(samples)-1 and
+                           samples[reference_index+1].t_s<=t_ref):
+                        reference_index+=1
+                    prev=samples[reference_index]
+                    nxt=samples[min(reference_index+1,len(samples)-1)]
+                    f_ref=clamp((t_ref-prev.t_s)/max(1e-8,nxt.t_s-prev.t_s),0.,1.)
+                    from mars_lora.kinodynamic_reference import ReferenceSample
+                    reference_state=ReferenceSample(
+                        t_ref,
+                        tuple(prev.xyz[j]*(1-f_ref)+nxt.xyz[j]*f_ref for j in range(3)),
+                        tuple(prev.velocity_xyz[j]*(1-f_ref)+nxt.velocity_xyz[j]*f_ref for j in range(3)),
+                        tuple(prev.acceleration_xyz[j]*(1-f_ref)+nxt.acceleration_xyz[j]*f_ref for j in range(3)),
+                        (0.,0.,0.))
+                    if t_ref>=trajectory_reference.duration_s:
+                        idx=len(waypoints)-1
+                        if reference_settle_s is None:reference_settle_s=t
+                desired[:]=list(reference_state.xyz)
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
             elif controller_mode in ('barrier_guard','barrier_ttc'):
@@ -350,8 +481,28 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
             xi=x_integral if controller_mode=='integral_guard' else 0.
             yi=y_integral if controller_mode=='integral_guard' else 0.
-            ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
-            ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
+            if reference_state is not None:
+                ax=clamp(reference_state.acceleration_xyz[0]+gain*(desired[0]-nav_xy[0])+damping*(reference_state.velocity_xyz[0]-nav_velocity[0]),-accel_limit,accel_limit)
+                ay=clamp(reference_state.acceleration_xyz[1]+gain*(desired[1]-nav_xy[1])+damping*(reference_state.velocity_xyz[1]-nav_velocity[1]),-accel_limit,accel_limit)
+            elif trajectory_speed_limits is None:
+                ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
+                ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
+            else:
+                # Opt-in velocity-mode corner approach; use estimated state
+                # only. These are command constraints, NOT realized speed /
+                # jerk bounds or a robust reachable-set certificate.
+                ex=desired[0]-nav_xy[0];ey=desired[1]-nav_xy[1]
+                dist_xy=math.hypot(ex,ey)
+                corner_cap=max(.30,trajectory_speed_limits[idx])
+                target_cap=min(corner_cap,math.sqrt(max(0.,2*.65*dist_xy)))
+                if rising:target_cap=0.
+                if dist_xy>1.e-7:
+                    target_vx=target_cap*ex/dist_xy
+                    target_vy=target_cap*ey/dist_xy
+                else:
+                    target_vx=target_vy=0.
+                ax=clamp(1.9*(target_vx-nav_velocity[0]),-accel_limit,accel_limit)
+                ay=clamp(1.9*(target_vy-nav_velocity[1]),-accel_limit,accel_limit)
             if controller_mode in ('barrier_guard','barrier_ttc'):
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
@@ -393,7 +544,13 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             rt=clamp(-by/9.81,-tilt_limit,tilt_limit)
             pt=clamp(bx/9.81,-tilt_limit,tilt_limit)
             tilt_factor=max(.8,math.cos(roll)*math.cos(pitch))
-            force=mass*clamp((9.81+3*(desired[2]-nav_xyz[2])-2.9*nav_velocity[2])/tilt_factor,1,18)
+            if reference_state is not None:
+                zacc=(9.81+reference_state.acceleration_xyz[2]+
+                      3*(desired[2]-nav_xyz[2])+
+                      2.9*(reference_state.velocity_xyz[2]-nav_velocity[2]))
+            else:
+                zacc=9.81+3*(desired[2]-nav_xyz[2])-2.9*nav_velocity[2]
+            force=mass*clamp(zacc/tilt_factor,1,18)
             mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
             my=moment_scale*clamp(.95*(pt-pitch)-.32*v[4],-.55,.55)
             arms=((armx,army),(armx,-army),(-armx,-army),(-armx,army)) if airframe=="crazyflie" else ((-armx,-army),(-armx,army),(armx,army),(armx,-army))
@@ -428,6 +585,20 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         if data.ncon>0 and first_contact is None:
             first_contact={"t_s":round(float(data.time),3),
                "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "estimated_xyz":[round(float(a),3) for a in nav_xyz],
+               "estimated_velocity_xyz":[round(float(a),3) for a in nav_velocity],
+               "actual_velocity_xyz":[round(float(a),3) for a in data.qvel[:3]],
+               "localization_error_m":round(float(math.dist(nav_xyz,data.qpos[:3])),3),
+               "shadow_eskf_xyz":([round(float(x),3) for x in shadow.position]
+                                   if shadow is not None else None),
+               "shadow_eskf_error_m":(round(float(math.dist(shadow.position,data.qpos[:3])),3)
+                                       if shadow is not None else None),
+               "shadow_eskf_sigma_rms_m":(round(float(shadow.position_rms_sigma_m),3)
+                                           if shadow is not None else None),
+               "precontact_navigation_rmse_m":round(math.sqrt(localization_sq_sum/max(1,localization_updates)),3),
+               "estimated_sigma_m":(round(float(inertial.sigma_m),3) if inertial else None),
+               "reference_elapsed_s":(round(float(data.time-reference_start_t),3)
+                    if reference_start_t is not None else None),
                "clearance_m":round(float(clearance),3),"waypoint_index":idx}
         contacts+=int(data.ncon>0)
         if k%25==0:
@@ -448,6 +619,21 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     result=dict(airframe=airframe,controller_mode=controller_mode,city_seed=city_seed,wind_phase=round(float(wind_phase),3),
                 navigation_ate_rmse_m=round(math.sqrt(localization_sq_sum/max(1,localization_updates)),4),
                 navigation_max_error_m=round(localization_max_error,4),
+                eskf_shadow_enabled=eskf_shadow,
+                legacy_precontact_rmse_m=round(math.sqrt(legacy_precontact_squared/max(1,legacy_precontact_count)),4),
+                eskf_shadow_precontact_rmse_m=(round(math.sqrt(shadow_precontact_squared/max(1,shadow_precontact_count)),4)
+                                               if shadow is not None else None),
+                eskf_shadow_ate_rmse_m=(round(math.sqrt(shadow_error_squared/max(1,shadow_samples)),4)
+                                        if shadow is not None else None),
+                eskf_shadow_max_error_m=(round(shadow_error_max,4) if shadow is not None else None),
+                eskf_shadow_99pct_coverage=(round(shadow_nees_99_inside/max(1,shadow_samples),4)
+                                              if shadow is not None else None),
+                eskf_shadow_position_rms_sigma_m=(round(shadow.position_rms_sigma_m,4)
+                                                    if shadow is not None else None),
+                eskf_shadow_scan_accepted=shadow_scan_accepted,
+                eskf_shadow_scan_rejected=shadow_scan_rejected,
+                eskf_shadow_planar_accepted=shadow_planar_accepted,
+                eskf_shadow_planar_rejected=shadow_planar_rejected,
                 localization_drift_m_sqrt_s=localization_drift_m_sqrt_s,
                 localization_measurement_sigma_m=localization_noise_sigma_m,
                 localization_seed=localization_seed,
@@ -458,6 +644,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 replan_stopping_envelope=replan_stopping_envelope,
                 stopping_envelope_rejections=stopping_envelope_rejections,
                 altitude_slew_m_s=altitude_slew_m_s,
+                trajectory_speed_profile_enabled=trajectory_speed_limits is not None,
+                trajectory_reference_enabled=trajectory_reference is not None,
+                online_risk_monitor=online_risk_monitor,
+                risk_monitor_checks=risk_monitor_checks,
+                risk_alarm_count=risk_alarm_count,
+                loss_of_confidence_first=loss_of_confidence_first,
+                loss_of_confidence_samples=loss_of_confidence_samples,
+                first_risk_alarm=risk_alarm_first,
+                reference_started=reference_start_t is not None,
+                reference_settle_s=reference_settle_s,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
