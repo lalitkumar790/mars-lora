@@ -1,0 +1,63 @@
+{
+  "city_seeds": [
+    15193,
+    77099
+  ],
+  "radio_seeds": [
+    701,
+    702,
+    703,
+    704,
+    705,
+    706,
+    707,
+    708
+  ],
+  "city_training_seed_excluded": 37021,
+  "localization_sigma_m_supplied_not_estimated": 0.1,
+  "planning_clearance_margin_m": 0.8500000000000001,
+  "physics_wind_force_scale": 0.25,
+  "controller": "legacy",
+  "profiles": {
+    "shifted_relay": {
+      "name": "shifted_relay",
+      "station": [
+        210.0,
+        185.0,
+        85.0
+      ],
+      "path_loss_exponent": 3.6,
+      "obstruction_db": 13.0,
+      "rx_bias_db": -1.5,
+      "interference_fraction": 0.12
+    },
+    "high_shadow": {
+      "name": "high_shadow",
+      "station": [
+        160.0,
+        240.0,
+        105.0
+      ],
+      "path_loss_exponent": 4.2,
+      "obstruction_db": 21.0,
+      "rx_bias_db": -3.0,
+      "interference_fraction": 0.24
+    }
+  },
+  "policy_hyperparameters": {
+    "airtime_budget_fraction": 0.2,
+    "channel_busy_guard": 0.2,
+    "propulsion_energy_weight_score_per_j": 0.003,
+    "flight_speed_assumption_mps": 1.2
+  },
+  "limitations": [
+    "native MuJoCo control uses true state, no GPS-denied SLAM",
+    "map-known planner receives perfect static city geometry",
+    "0.10m sigma is assumed, not obtained from an estimator",
+    "LoRa obstruction and pilot are simulated using the same broad model class",
+    "only two frozen unseen city layouts, two synthetic radio profiles",
+    "flight-energy cost is an uncalibrated hover-power proxy",
+    "policy thresholds developed on prior five radio scenarios",
+    "packet replay reuses each executed route and does not close online radio/flight loop"
+  ]
+}

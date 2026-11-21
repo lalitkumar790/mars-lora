@@ -1,0 +1,28 @@
+[
+  {
+    "city_seed": 15193,
+    "buildings": 72,
+    "planner_success": true,
+    "lengths_m": {
+      "shortest": 60.0,
+      "rf_aware": 66.0
+    },
+    "clearances_m": {
+      "shortest": 0.9000000000000001,
+      "rf_aware": 1.3800000000000001
+    }
+  },
+  {
+    "city_seed": 77099,
+    "buildings": 72,
+    "planner_success": true,
+    "lengths_m": {
+      "shortest": 60.0,
+      "rf_aware": 66.0
+    },
+    "clearances_m": {
+      "shortest": 0.9000000000000001,
+      "rf_aware": 1.2420627521071552
+    }
+  }
+]

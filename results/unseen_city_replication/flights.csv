@@ -1,0 +1,9 @@
+airframe,controller_mode,city_seed,wind_phase,safety_holds,completed,elapsed_s,waypoint_reached,min_clearance_m,contact_samples,max_tilt_deg,max_tracking_error_m,xy_tracking_rms_m,route_waypoints,end_position_xyz,route,safety_pass
+heavy,legacy,15193,1.56,0,True,120.68,11,0.881,0,5.3,3.5,0.892,11,"[-30.123, 23.516, 4.0]",shortest,True
+heavy,legacy,15193,1.56,0,True,112.61,9,1.499,0,5.23,6.31,0.877,9,"[-30.118, 23.991, 4.278]",rf_aware,True
+crazyflie,legacy,15193,1.56,0,True,133.76,11,0.705,0,8.32,3.5,0.935,11,"[-30.351, 23.645, 4.0]",shortest,True
+crazyflie,legacy,15193,1.56,0,True,126.95,9,1.973,0,7.88,6.16,0.931,9,"[-29.524, 24.045, 4.146]",rf_aware,True
+heavy,legacy,77099,0.52,0,True,121.21,11,0.859,0,5.58,3.5,0.893,11,"[-30.025, 23.501, 4.0]",shortest,True
+heavy,legacy,77099,0.52,0,True,117.54,8,1.072,0,5.45,6.01,0.872,8,"[-29.875, 24.093, 4.286]",rf_aware,True
+crazyflie,legacy,77099,0.52,0,True,135.51,11,0.712,0,8.33,3.5,0.932,11,"[-30.346, 23.64, 4.0]",shortest,True
+crazyflie,legacy,77099,0.52,0,True,128.8,8,0.92,0,8.3,6.02,0.93,8,"[-29.523, 24.064, 4.135]",rf_aware,True
