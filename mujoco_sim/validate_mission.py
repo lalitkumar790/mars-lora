@@ -144,7 +144,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 if t>=next_lidar_time:
                     reading=simulate_scan(tuple(float(x) for x in p[:3]),
                                           yaw,scene_solids,lidar_rng,
-                                          noise_sigma=.06,dropout=.03)
+                                          noise=.06,dropout=.03)
                     accepted,scan_score,hits=inertial.correct(reading,scene_solids)
                     if accepted:lidar_accepted+=1
                     else:lidar_rejected+=1
