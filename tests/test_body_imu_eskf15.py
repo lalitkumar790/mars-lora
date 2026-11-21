@@ -61,4 +61,5 @@ class FullESKF15Tests(unittest.TestCase):
   with self.assertRaises(ValueError):f.correct_xyz((0.,0.,4.),std_m=0.)
   with self.assertRaises(ValueError):InertialESKF15.initial(quat_wb=(0.,0.,0.,0.))
 
-if __name__=="__main__":unittest.main()
+if __name__=="__main__":
+ unittest.main()
