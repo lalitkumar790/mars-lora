@@ -23,9 +23,9 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
 <label class="field full" for="missionType" style="margin:0">Flight mission</label>
-<select id="missionType" class="full"><option value="inspection">Fixed inspection benchmark (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest-safe randomized urban route</option><option value="astar_rf" selected>3D A*: LoRa-aware randomized urban route</option></select>
+<select id="missionType" class="full"><option value="inspection">Fixed inspection benchmark (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest-safe randomized urban route</option><option value="astar_rf">3D A*: LoRa-aware randomized urban route</option><option value="sites_shortest">Building-to-building inspection · shortest-safe</option><option value="sites_rf" selected>Building-to-building inspection · LoRa-aware</option></select>
 <button id="mission" class="primary full">▶ Generate NEW city + start selected mission</button>
-<p id="plannerStatus" class="full" style="margin:4px 0;color:#8bd6f0">Choose either urban A* mode. Each start generates a new city, destination and physical mission.</p>
+<p id="plannerStatus" class="full" style="margin:4px 0;color:#8bd6f0">Building missions: generate new sites, fly between buildings, hover for inspection and return to base.</p>
 <button id="pause">Ⅱ Pause</button>
 <button id="reset" class="danger">↺ Reset</button>
 <button id="hover" class="full">◎ Hold position</button>
@@ -113,8 +113,9 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <canvas id="missionMap" width="440" height="310" aria-label="Live top-down drone route and obstacle map" style="width:100%;height:205px;border:1px solid #263e55;border-radius:9px"></canvas>
 <p>Amber: safe transit corridor · Blue: vehicle · Red: solid collision geometry · Cyan: radio path (orange when obstructed).</p>
 <h2>Urban 3D route planner</h2>
-<p id="missionIdentity">No randomized A* mission generated yet.</p>
-<p id="plannerStats">Each urban A* start generates a new city seed, a different collision-safe destination and a fresh takeoff. The planner uses known physics geometry; this is not GPS-denied map discovery.</p>
+<p id="missionIdentity">No randomized mission generated yet.</p>
+<p id="siteProgress">No inspection sites assigned.</p>
+<p id="plannerStats">Each urban A* start generates a fresh city and flight. Building-site missions visit two distinct buildings, pause at safe standoff positions for 3 seconds, and return to base. The planner uses known physics geometry; this is not GPS-denied map discovery.</p>
 <div class="met">
 <div class="metric"><div class="k">Planned route length</div><div class="v" id="planDistance">—</div></div>
 <div class="metric"><div class="k">Minimum static clearance</div><div class="v" id="planClearance">—</div></div>
