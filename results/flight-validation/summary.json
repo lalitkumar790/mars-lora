@@ -28,6 +28,23 @@
     "max_tilt_deg": 6.6,
     "max_tracking_error_m": 6.5,
     "xy_tracking_rms_m": 0.878,
+    "first_contact": null,
+    "first_clearance_violation": null,
+    "minimum_clearance_event": {
+      "t_s": 55.86,
+      "position_xyz": [
+        -6.848,
+        0.24,
+        7.0
+      ],
+      "clearance_m": 1.0,
+      "estimated_position_xyz": [
+        -6.848,
+        0.249,
+        7.0
+      ],
+      "waypoint_index": 4
+    },
     "route_waypoints": 7,
     "end_position_xyz": [
       -0.069,
@@ -64,6 +81,23 @@
     "max_tilt_deg": 8.45,
     "max_tracking_error_m": 6.5,
     "xy_tracking_rms_m": 0.926,
+    "first_contact": null,
+    "first_clearance_violation": null,
+    "minimum_clearance_event": {
+      "t_s": 64.392,
+      "position_xyz": [
+        -6.942,
+        -0.24,
+        7.0
+      ],
+      "clearance_m": 1.24,
+      "estimated_position_xyz": [
+        -6.946,
+        -0.23,
+        7.0
+      ],
+      "waypoint_index": 4
+    },
     "route_waypoints": 7,
     "end_position_xyz": [
       -0.236,
