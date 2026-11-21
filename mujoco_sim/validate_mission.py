@@ -74,11 +74,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
-        lidar_blackout_window=None,replan_stopping_envelope=False):
+        lidar_blackout_window=None,replan_stopping_envelope=False,
+        altitude_slew_m_s=None):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if altitude_slew_m_s is not None and (not math.isfinite(altitude_slew_m_s) or altitude_slew_m_s<=0):
+        raise ValueError('Altitude slew rate must be positive and finite')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
@@ -311,7 +314,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             rising=target[2]>=6.8 and nav_xyz[2]<target[2]-.35
             desired[0]=nav_xy[0] if rising else goalx
             desired[1]=nav_xy[1] if rising else goaly
-            desired[2]=target[2]
+            if altitude_slew_m_s is None:
+                desired[2]=target[2]
+            else:
+                # A bounded command, not a claim that actual vertical speed
+                # or stopping distance are proven safe. Control period 20 ms.
+                desired[2]+=clamp(target[2]-desired[2],
+                                   -.02*altitude_slew_m_s,
+                                   .02*altitude_slew_m_s)
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
             elif controller_mode in ('barrier_guard','barrier_ttc'):
@@ -447,6 +457,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 map_replans=map_replans,map_replan_failures=map_replan_failures,
                 replan_stopping_envelope=replan_stopping_envelope,
                 stopping_envelope_rejections=stopping_envelope_rejections,
+                altitude_slew_m_s=altitude_slew_m_s,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
