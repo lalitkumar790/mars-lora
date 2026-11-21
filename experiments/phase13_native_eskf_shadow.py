@@ -46,7 +46,9 @@ def run_study(output="results/phase13_native_eskf_shadow"):
                "eskf_max_error_m":flight["eskf_shadow_max_error_m"],
                "eskf_coverage99":flight["eskf_shadow_99pct_coverage"],
                "eskf_scan_accepted":flight["eskf_shadow_scan_accepted"],
-               "eskf_scan_rejected":flight["eskf_shadow_scan_rejected"]}
+               "eskf_scan_rejected":flight["eskf_shadow_scan_rejected"],
+               "eskf_planar_accepted":flight["eskf_shadow_planar_accepted"],
+               "eskf_planar_rejected":flight["eskf_shadow_planar_rejected"]}
             print("NATIVE",json.dumps(x),flush=True)
             rows.append(x)
     control=rows[0];observed=rows[1]
@@ -55,7 +57,7 @@ def run_study(output="results/phase13_native_eskf_shadow"):
                control["min_clearance_m"]==observed["min_clearance_m"] and
                control["elapsed_s"]==observed["elapsed_s"] and
                control["legacy_ate_rmse_m"]==observed["legacy_ate_rmse_m"])
-    summary={"scope":"native MuJoCo, shared *synthetic* sensor stream, shadow ESKF only",
+    summary={"scope":"Phase13b shared 3D + 2D map-aided native MuJoCo synthetic sensor stream, ESKF shadow only",
              "no_shadow_changes_baseline":unchanged,"cases":rows,
              "warnings":["Prior map known exactly; observed LiDAR rays are synthetic",
                          "Shadow filter not driving flight controller or safety supervisor",
