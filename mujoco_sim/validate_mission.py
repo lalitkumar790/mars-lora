@@ -105,6 +105,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     localization_bias=[0.,0.]
     map_correction=[0.,0.]
     inertial=None
+    # Fixed per-flight accelerometer offset, in m/s^2. The previous prototype
+    # mistakenly integrated position-random-walk bias directly as m/s^2,
+    # which blew up into kilometer-scale pose errors. Preserve its V1 results.
+    imu_bias_rng=random.Random(localization_seed+1997)
+    imu_accel_bias=[imu_bias_rng.gauss(0.,.003) for _ in range(3)]
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
     last_replan_time=-100.
@@ -132,10 +137,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # No ground-truth XY or body velocity enters this controller.
                 measured_accel=[
                     (float(v[i])-imu_last_velocity[i])/localization_dt
-                    +localization_bias[i] if i<2 else
-                    (float(v[i])-imu_last_velocity[i])/localization_dt
-                    for i in range(3)]
-                measured_accel=[a+localization_rng.gauss(0.,.035)
+                    +imu_accel_bias[i] for i in range(3)]
+                measured_accel=[clamp(a+localization_rng.gauss(0.,.025),-6.,6.)
                                 for a in measured_accel]
                 for axis in range(3):imu_last_velocity[axis]=float(v[axis])
                 inertial.predict(measured_accel,
