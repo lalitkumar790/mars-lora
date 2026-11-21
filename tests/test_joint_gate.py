@@ -15,6 +15,14 @@ class JointGateTests(unittest.TestCase):
         self.assertGreater(chosen.estimated_alert_success,0)
         self.assertLessEqual(chosen.estimated_alert_success,1)
         self.assertLessEqual(chosen.score,max(x.score for x in candidates))
+    def test_budgeted_deadline_policy_never_chooses_long_airtime(self):
+        choice,candidates=choose_deadline_route(
+            self.routes,-132.,.32,airtime_budget_fraction=.20)
+        for cand in candidates:
+            self.assertLessEqual(cand.expected_airtime_s,3.*.20*(1-.32)+1e-9)
+        self.assertIn(choice.spreading_factor,(7,8,9,10,11,12))
+        with self.assertRaises(ValueError):
+            choose_deadline_route(self.routes,-132.,.32,airtime_budget_fraction=-.2)
     def test_invalid_radio_constraints(self):
         with self.assertRaises(ValueError):
             choose_deadline_route(self.routes,float("nan"),.1)
