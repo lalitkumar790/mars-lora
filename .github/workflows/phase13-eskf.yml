@@ -1,6 +1,12 @@
 name: Phase 13 ESKF consistency and outlier study
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mars_lora/lidar_imu_eskf.py'
+      - 'tests/test_lidar_imu_eskf.py'
+      - 'experiments/phase13_eskf_development.py'
+      - '.github/workflows/phase13-eskf.yml'
   push:
     paths:
       - 'mars_lora/lidar_imu_eskf.py'
