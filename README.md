@@ -1,9 +1,11 @@
 # MARS-LoRa: Mobility-Aware Reliability and Safety for LoRa UAV Links
 
+> **Research status (21 November 2026):** Physically executed 3D A* flight and reproducible LoRa comparisons exist, but the system is **not yet a validated GPS-denied, robust or field-calibrated autonomous LoRa UAV**. A held-out propagation experiment uncovered cases where RF-aware detours have no benefit or worsen critical-alert timeliness. A native MuJoCo disturbance sweep failed 8/20 legacy scenarios; experimental higher-control-authority gains failed 6/20 scenarios. See the [evidence and acceptance-gate audit](research/RESEARCH_AUDIT_AND_GATES.md), [radio robustness results](results/heldout_validation/), [wind stress results](results/wind_robustness/), and the [exploratory preflight route-gate audit](results/preflight_gate/). These are simulation outputs, not field measurements.
+
 Research prototype accompanying an **eight-page maximum** manuscript on LoRa for autonomous aerial robots.
 
 ## Scope and scientific status
-The **runnable baseline** is a deterministic, event-driven **raw LoRa link abstraction** operating on configurable 3D inspection trajectories. It is **not** a hardware-validated PHY, an ns-3 LoRaWAN model, or proof of real-world UAV safety. MuJoCo and ROS 2 adapters are developed separately. Never present synthetic/example plots as measurements.
+The **runnable baseline** is a deterministic, event-driven **raw LoRa link abstraction** operating on configurable 3D inspection trajectories. It is **not** a hardware-validated PHY, an ns-3 LoRaWAN model, or proof of real-world UAV safety. Native MuJoCo trajectories are already coupled to reproducible raw-LoRa radio replay; ROS 2 closed-loop autonomy remains experimental. Never present synthetic/example plots as measurements.
 
 Our testable question: does combining deadline-aware message prioritization, proactive SF adjustment, and mission slowdown improve timely telemetry/alert delivery over fixed-SF or reactive-SF policies?
 
@@ -22,7 +24,7 @@ Matplotlib is required **only** for plot generation: `pip install matplotlib`.
 The experiment runner generates `results/raw/trials.csv`, `results/raw/summary.csv`, and `results/raw/manifest.json`. The graph builder produces figure PDFs/PNGs for `paper/paper.tex`. Research plots and summary CSVs are never included in the Vercel site. Check in generated outputs only after verifying they were actually executed.
 
 ## Reproducibility boundaries
-- Trajectory generation is a **kinematic surrogate**. To claim physically realized flight, run the MuJoCo bridge and feed logged poses into the channel model.
+- The original 720-trial rectangular-route **baseline remains kinematic**. Later RF-aware route results use actual native MuJoCo flight traces. Neither is a field flight.
 - Link model: log-distance path loss, correlated Gaussian shadowing, SF receiver thresholds, LoRa airtime, single-channel contention approximation, application queues, and deadline expiry.
 - SF changes currently assume synchronized receiver settings (an optimistic upper bound). A practical design needs a control-channel/handshake and its cost.
 - Radio power is a proxy for TX energy, excluding MCU, RX, and propulsive energy.
@@ -54,11 +56,11 @@ The MuJoCo browser scene is a purpose-built compact testbed and is not yet the i
 `cd paper && latexmk -pdf -interaction=nonstopmode paper.tex`. Verify `pdfinfo paper.pdf | grep Pages` is <=8. The manuscript explicitly marks unexecuted experiments as pending. Manuscript PDF is expected to be provided through CI artifacts once the build passes.
 
 ## License
-Code: MIT (see LICENSE). Third-party drone models retain their original licenses and are **not vendored** into this repository.
+Code: MIT (see LICENSE). MuJoCo Menagerie Crazyflie and Skydio visual CAD meshes are vendored in `public/assets/` with their separate upstream license files.
 
 ## Multi-airframe MuJoCo flight console (November 2026)
-- Airframe selector: original 1.2 kg inspection quad or a **27 g Crazyflie 2-derived** dynamics model. Real MuJoCo free-body integration and four independent rotor forces are applied in either case, with distinct thrust limits, rotor arms, mass and moments of inertia.
-- Crazyflie physical parameters sourced from [Google DeepMind MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/bitcraze_crazyflie_2) (upstream MIT copyright preserved under `mujoco_sim/reference/`). The source model needs its original OBJ meshes; the Vercel variant is a browser-compatible primitive reconstruction, **not** an identical imported mesh model.
+- Airframe selector: 1.325 kg Skydio-derived inspection quad or a **27 g Crazyflie 2-derived** dynamics model. Real MuJoCo free-body integration and four independent rotor forces are applied in either case, with distinct thrust limits, rotor arms, mass and moments of inertia.
+- Crazyflie physical parameters sourced from [Google DeepMind MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie/tree/main/bitcraze_crazyflie_2) (upstream MIT copyright preserved under `mujoco_sim/reference/`). The browser visualizer now loads the original OBJ CAD meshes; MuJoCo rigid-body inertias and motor control remain partly approximated.
 - Shared industrial site: three buildings, container, transmission mast, pylon and overhead beam with MuJoCo contacts. 3D scene rendering is separate from but geometrically aligned with the physical static colliders. Extra distant visualization tanks are only scenery and have **no collision shape**.
 - Browser telemetry includes airframe pose, speed, rotor thrust, waypoint status, and an **interactive approximate raw-LoRa link** showing RSSI, information freshness and packet delivery. The packet simulation depends on the drone's current physics state but remains a simplified, seedable stochastic model; SF synchronization, collision and regulatory constraints are idealized. No research figures or static trial results are deployed on Vercel.
 - Headless Chromium CI tests physics initialization, takeoff, waypoint activation, pause/reset, airframe switching and live critical-alert injection.
