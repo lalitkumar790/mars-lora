@@ -29,3 +29,28 @@ Development seeds `91311` (previously characterized) and `62731` (new procedural
 Run via `.github/workflows/phase17-viewpoint.yml`, with full traces in CI artifact `phase17-observability-route-dev`. A future *independent* test would require a newly frozen city split, external sensor validation, paired disturbance seeds, full-mission deadlines and energy accounting.
 
 **Stop/go:** Until at least reliable native improvement on development plus independently heldout cities and physically validated recovery, DO NOT promote this algorithm to autonomous flight. Previous Phase 11 10/16 independent-city safety gate remains FAILED.
+
+## Verified first native development run — a negative result
+
+[GitHub Actions run 44938907387](https://github.com/lalitkumar790/mars-lora/actions/runs/44938907387), paired heavy MuJoCo and identical seeded noise, executed both policy variants where a valid staged route existed. Unit tests and the native runner completed; a successful workflow does **not** imply successful flight.
+
+| Metric | Unchanged staged+quintic baseline | Oracle observability waypoint insertion |
+|---|---:|---:|
+| Expected city-route missions | 4 | 4 |
+| Physically executed | 2 | 2 |
+| Safe of all expected | **1/4** | **1/4** |
+| Failed at preflight route generation | 2 | 2 |
+| Physically executed but failed/contacts | 1 | 1 |
+| Accepted viewpoint detours | n/a | **0** |
+
+Seed 91311 shortest completed without contacts, 1.211m minimum clearance, 0.0685m legacy RMSE. Its nominal six-dimensional information fraction was 0.20 (both variants), and the algorithm kept the same route after checking 12 candidates.
+
+Seed 91311 RF-aware had first physical contact at **t=83.600s** near (-8.439, 23.430, 16.997)m with **5.885m** estimated position error, 4,660 contact samples, and incomplete 240-second flight. Its route nominal information fraction was ~0.14286; 12 candidates evaluated, none accepted, so both variants were identical and unsafe.
+
+For **new development city 62731**, both shortest and RF-aware map-known staged routes failed with `Unsafe start or goal`. Both policies retain those two planning failures in their four-case denominator. This must not be hidden as an unexecuted scenario in a safety-success fraction.
+
+**Interpretation:** A single lateral waypoint insertion into the longest horizontal route legs, with an imposed 0.05 absolute rank-six gain and quintic feasibility/clearance limits, has no demonstrated improvement. The output is a correct *fail-closed* baseline fallback, not active perception. It is possible that no safe, beneficial short detour exists at all in those scenes, or that the search is too narrow. The current data do not separate these explanations.
+
+**Next preflight experiment:** `experiments/phase17b_preflight.py` records per-constraint reject counts over known development seeds 91311/48221/63047 and new development 62731; no threshold relaxation or independent confirmation is claimed. Do not move to a new frozen holdout until a policy achieves feasible, independently measured improvements in *both* perception and safe flight on separate development cases.
+
+**Hard stop:** The new candidate does not use the body-fixed scan in the online estimator and changes no flight controller. Real adaptive LiDAR trajectory planning, LoRa timeliness and whole-mission energy remain unproven. Prior Phase 11 independent-city safety gate FAILED 10/16.
