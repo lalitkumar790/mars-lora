@@ -8,7 +8,7 @@ The map, sensor noises and planner settings are locked in source before tests.
 from __future__ import annotations
 import csv,json
 from pathlib import Path
-from statistics import mean
+from mars_lora.research_gate import score_safety
 from mars_lora.rf_astar import INDUSTRIAL,plan
 from mars_lora.urban_scene import city
 from mujoco_sim.validate_mission import run
@@ -52,21 +52,14 @@ def evaluate(output="results/imu3d_replanning",hybrid=False,city_seeds=CITIES):
     if rows:
         with (out/"trials.csv").open("w",newline="") as f:
             w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
-    summary=[]
-    for mode,replanning in modes:
-        label=mode+('_replan' if replanning else '_no_replan')
-        xs=[x for x in rows if x["evaluation_policy"]==label]
-        if not xs:continue
-        summary.append(dict(mode=label,scenarios=len(xs),
-           safety_pass=sum(x["safe"] for x in xs),
-           mean_ate_m=mean(x["navigation_ate_rmse_m"] for x in xs),
-           total_map_replans=sum(x["map_replans"] for x in xs),
-           total_replan_failures=sum(x["map_replan_failures"] for x in xs),
-           total_lidar_corrections=sum(x["lidar_matches_accepted"] for x in xs)))
+    # Intent-to-treat research scoring: every predeclared city/route/policy
+    # remains in the denominator, even when A* cannot produce a safe plan.
+    summary,gate=score_safety(rows,planner_errors,city_seeds,ROUTES,modes)
     (out/"summary.json").write_text(json.dumps({
         "phase":"Experimental 3D range plus inertial state estimation, uncertainty-based map replanning",
         "city_seeds":list(city_seeds),"physical_runs":len(rows),
-        "expected_runs":len(city_seeds)*len(ROUTES)*len(modes),
+        "expected_runs":gate["expected_flights"],
+        "end_to_end_safety":gate,
         "hybrid_fusion_and_shared_blackout":hybrid,
         "planner_errors":planner_errors,"results":summary,
         "caution":[
@@ -74,10 +67,12 @@ def evaluate(output="results/imu3d_replanning",hybrid=False,city_seeds=CITIES):
           "IMU measurements simulated from native velocity finite differences, with Gaussian noise and drift",
           "Initial launch location known and yaw/rotor-attitude loop still use ideal native physics",
           "3D scan matching uses 48 synthetic rays with AABB buildings, no moving pedestrians/vehicles",
-          "Only heavy UAV, two new cities and mild disturbance; not real-world validation",
+          "Only heavy UAV, procedural cities and mild disturbance; not real-world validation",
           "A* replanning uses estimated XYZ and heuristic covariance proxy, not proven consistent Gaussian uncertainty",
-          "Unsafe/incomplete flights remain explicit in outcome; no optimistic packet replay for them"
-        ]},indent=2)+"\n")
+          "Unplanned, unsafe and incomplete missions are included as failures in the full experimental denominator",
+          "Position ATE is measured on executed flights only and cannot validate mission safety",
+          "No LoRa credit is assigned to physically failed flights"
+        ]},indent=2)+"\\n")
     print(json.dumps(summary,indent=2),flush=True)
     return summary
 if __name__=="__main__":
