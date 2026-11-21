@@ -25,11 +25,11 @@ def city(seed=CITY_SEED):
             buildings.append((x,y,height/2,sx,sy,height/2))
     return buildings
 
-def add_city_mjcf(xml):
+def add_city_mjcf(xml,seed=CITY_SEED):
     def geom(i,b):
         x,y,z,hx,hy,hz=b
         return ('<geom name="urban_%d" type="box" pos="%.8f %.8f %.8f" '
                 'size="%.8f %.8f %.8f" friction=".9 .03 .003" '
                 'rgba=".28 .34 .42 1"/>')%(i,x,y,z,hx,hy,hz)
     if '</worldbody>' not in xml:raise ValueError('Missing MuJoCo worldbody')
-    return xml.replace('</worldbody>','\n'.join(geom(i,b) for i,b in enumerate(city()))+'</worldbody>')
+    return xml.replace('</worldbody>','\n'.join(geom(i,b) for i,b in enumerate(city(seed)))+'</worldbody>')
