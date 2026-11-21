@@ -20,6 +20,13 @@ class RiskConstrainedAStarTests(unittest.TestCase):
     def test_distinct_objectives(self):
         self.assertLessEqual(self.short.geometric_length_m,self.rf.geometric_length_m+1e-6)
         self.assertGreaterEqual(self.rf.predicted_mean_success,self.short.predicted_mean_success-.01)
+    def test_localization_uncertainty_inflates_clearance(self):
+        self.assertEqual(self.short.minimum_clearance_m>=.55-1e-6,True)
+        uncertain=plan("shortest",localization_sigma_m=.10)
+        self.assertGreaterEqual(uncertain.minimum_clearance_m,.85-1e-6)
+        self.assertGreaterEqual(uncertain.geometric_length_m,self.short.geometric_length_m)
+        with self.assertRaises(ValueError):
+            plan("shortest",localization_sigma_m=-.1)
     def test_radio_uses_obstacle_geometry(self):
         self.assertTrue(obstructed((0,0,4.),GCS) or not obstructed((0,0,4.),GCS))
         self.assertGreaterEqual(predict_success((0,0,4.),GCS),0.)
