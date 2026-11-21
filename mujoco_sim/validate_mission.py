@@ -115,6 +115,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     map_replans=map_replan_failures=localization_lost_events=0
     stopping_envelope_rejections=0
     last_replan_time=-100.
+    replan_anchor_xy=None
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
@@ -270,6 +271,10 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     if math.hypot(nav_velocity[0],nav_velocity[1])>.45:
                         raise ValueError('Replan handoff speed too high')
                     waypoints=transition[1:]
+                    if replan_stopping_envelope:
+                        # Track from the exact estimated pose validated by
+                        # the stopping-envelope splice, not launch origin.
+                        replan_anchor_xy=tuple(nav_xyz[:2])
                     idx=0;map_replans+=1
                     target=waypoints[idx]
                 except (RuntimeError,ValueError,AssertionError):
@@ -284,7 +289,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 target=waypoints[idx]
             # Match browser lookahead tracking: project current XY onto the
             # segment, advance by 0.9m, and brake at each corner.
-            ax0,ay0=(0,0) if idx==0 else waypoints[idx-1][:2]
+            ax0,ay0=((replan_anchor_xy if replan_anchor_xy is not None else (0,0))
+                     if idx==0 else waypoints[idx-1][:2])
             dx,dy=target[0]-ax0,target[1]-ay0
             L=math.hypot(dx,dy)
             if L>1e-9:
