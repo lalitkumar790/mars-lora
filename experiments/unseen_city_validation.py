@@ -165,7 +165,7 @@ def evaluate(output="results/unseen_city",city_seeds=CITY_SEEDS):
     if trials:
         write_csv(out/"trials.csv",trials,list(trials[0]))
     summary=[]
-    for city_seed in CITY_SEEDS:
+    for city_seed in city_seeds:
         for airframe in ("heavy","crazyflie"):
             for profile in HOLDOUT_PROFILES:
                 subset=[r for r in trials if r["city_seed"]==city_seed and
