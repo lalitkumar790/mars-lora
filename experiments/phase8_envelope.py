@@ -60,7 +60,12 @@ def evaluate(output,city_seeds=(91311,20483)):
             "incomplete":sum(not x["completed"] for x in r),
             "replans":sum(x["map_replans"] for x in r),
             "replan_failures":sum(x["map_replan_failures"] for x in r),
-            "envelope_rejections":sum(x["stopping_envelope_rejections"] for x in r)})
+            "envelope_rejections":sum(x["stopping_envelope_rejections"] for x in r),
+            "failure_events":[{"city_seed":x["city_seed"],"route":x["route"],
+                                "first_contact":x["first_contact"],
+                                "first_clearance_violation":x["first_clearance_violation"],
+                                "minimum_clearance_event":x["minimum_clearance_event"]}
+                               for x in r if not x["safe"]]})
     (output/"summary.json").write_text(json.dumps(summary,indent=2)+"\n")
     return summary
 
