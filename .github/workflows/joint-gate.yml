@@ -25,18 +25,20 @@ jobs:
           python-version: '3.11'
       - name: Unit-test outcome-blind route and SF gate
         run: python -m unittest tests.test_joint_gate -v
-      - name: Replay jointly chosen route and spreading factor on real MuJoCo logs
-        run: python -m experiments.joint_gate_audit --seeds 20
+      - name: Replay V1 joint selector on executed MuJoCo traces
+        run: python -m experiments.joint_gate_audit --seeds 20 --output results/joint_gate
+      - name: Replay V2 deadline-budgeted selector on identical radio seeds
+        run: python -m experiments.joint_gate_audit --seeds 20 --airtime-budget 0.20 --output results/joint_gate_v2
       - name: Publish all outcomes including negative trials
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          tar -czf /tmp/joint-gate-results.tgz results/joint_gate
+          tar -czf /tmp/joint-gate-results.tgz results/joint_gate results/joint_gate_v2
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             tar -xzf /tmp/joint-gate-results.tgz
-            git add results/joint_gate
+            git add results/joint_gate results/joint_gate_v2
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'results: ex-ante route and actual SF joint packet replay [skip ci]'
             if git push origin HEAD:main; then exit 0; fi
@@ -46,4 +48,6 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: joint-route-sf-exploratory-results
-          path: results/joint_gate/*
+          path: |
+            results/joint_gate/*
+            results/joint_gate_v2/*
