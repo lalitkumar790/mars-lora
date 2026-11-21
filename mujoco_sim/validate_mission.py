@@ -191,16 +191,21 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     localization_noise_sigma_m*localization_rng.gauss(0.,1.)
                     if localization_noise_sigma_m else 0.) for axis in (0,1))
             if localization_mode=='lidar_match' and t>=next_lidar_time:
-                scan=observe_scan((float(p[0]),float(p[1])),yaw,float(p[2]),
-                                  scene_solids,lidar_rng,noise_sigma=.06)
-                prior=(raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1])
-                corrected,accepted,scan_score=match_scan(
-                    prior,yaw,float(p[2]),scan,scene_solids)
-                if accepted:
-                    map_correction[0]=corrected[0]-raw_xy[0]
-                    map_correction[1]=corrected[1]-raw_xy[1]
-                    lidar_accepted+=1
-                else:lidar_rejected+=1
+                blackout=(lidar_blackout_window is not None and
+                          lidar_blackout_window[0]<=t<=lidar_blackout_window[1])
+                if blackout:
+                    lidar_rejected+=1
+                else:
+                    scan=observe_scan((float(p[0]),float(p[1])),yaw,float(p[2]),
+                                      scene_solids,lidar_rng,noise_sigma=.06)
+                    prior=(raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1])
+                    corrected,accepted,scan_score=match_scan(
+                        prior,yaw,float(p[2]),scan,scene_solids)
+                    if accepted:
+                        map_correction[0]=corrected[0]-raw_xy[0]
+                        map_correction[1]=corrected[1]-raw_xy[1]
+                        lidar_accepted+=1
+                    else:lidar_rejected+=1
                 next_lidar_time+=2.0
             nav_xy=(raw_xy if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') else
                     (raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1]))
