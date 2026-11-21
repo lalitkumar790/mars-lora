@@ -75,7 +75,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
-        altitude_slew_m_s=None):
+        altitude_slew_m_s=None,trajectory_speed_limits=None):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
@@ -86,6 +86,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
+    if trajectory_speed_limits is not None and (len(trajectory_speed_limits)!=len(waypoints) or
+        any(not math.isfinite(v) or v<0 for v in trajectory_speed_limits)):
+        raise ValueError('Trajectory speed limits must be finite and align with waypoints')
     root=Path(__file__).resolve().parents[1]
     xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
     model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml,seed=city_seed))
@@ -350,8 +353,25 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
             xi=x_integral if controller_mode=='integral_guard' else 0.
             yi=y_integral if controller_mode=='integral_guard' else 0.
-            ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
-            ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
+            if trajectory_speed_limits is None:
+                ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
+                ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
+            else:
+                # Opt-in velocity-mode corner approach; use estimated state
+                # only. These are command constraints, NOT realized speed /
+                # jerk bounds or a robust reachable-set certificate.
+                ex=desired[0]-nav_xy[0];ey=desired[1]-nav_xy[1]
+                dist_xy=math.hypot(ex,ey)
+                corner_cap=max(.30,trajectory_speed_limits[idx])
+                target_cap=min(corner_cap,math.sqrt(max(0.,2*.65*dist_xy)))
+                if rising:target_cap=0.
+                if dist_xy>1.e-7:
+                    target_vx=target_cap*ex/dist_xy
+                    target_vy=target_cap*ey/dist_xy
+                else:
+                    target_vx=target_vy=0.
+                ax=clamp(1.9*(target_vx-nav_velocity[0]),-accel_limit,accel_limit)
+                ay=clamp(1.9*(target_vy-nav_velocity[1]),-accel_limit,accel_limit)
             if controller_mode in ('barrier_guard','barrier_ttc'):
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
@@ -458,6 +478,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 replan_stopping_envelope=replan_stopping_envelope,
                 stopping_envelope_rejections=stopping_envelope_rejections,
                 altitude_slew_m_s=altitude_slew_m_s,
+                trajectory_speed_profile_enabled=trajectory_speed_limits is not None,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
