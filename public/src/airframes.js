@@ -59,10 +59,11 @@ export async function loadAirframeCAD(drone,airframe,rotors,report=()=>{}){
       const rotor=bladeGroup(x,y,z,.11);group.add(rotor);visualRotors.push(rotor);
     }
   }
-  if(ticket!==loadNumber){group.traverse(obj=>{if(obj.geometry)obj.geometry.dispose()});return;}
+  if(ticket!==loadNumber){group.traverse(obj=>{if(obj.geometry)obj.geometry.dispose()});return false;}
   drone.clear();
   rotors.splice(0,rotors.length,...visualRotors);
   drone.add(group);
   drone.scale.setScalar(1);
   report('Loaded original '+(airframe==='crazyflie'?'Crazyflie 2':'Skydio X2')+' CAD mesh. Physics uses matching mass/rotor layout; motor model is simplified.');
+  return true;
 }
