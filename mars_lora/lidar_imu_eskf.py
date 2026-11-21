@@ -103,7 +103,7 @@ class TranslationalESKF:
         if not math.isfinite(nis) or nis>nis_limit:
             self.rejected+=1
             return UpdateResult(False,nis,nis_limit,"innovation_gate")
-        K=np.linalg.solve(S,self.P@H.T.T if False else (H@self.P)).T
+        K=np.linalg.solve(S,H@self.P).T
         dx=K@innovation
         self.position+=dx[:3]
         self.velocity+=dx[3:6]
