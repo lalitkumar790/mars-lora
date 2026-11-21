@@ -53,3 +53,36 @@ A collision-safe mobile robot (UAV in the current prototype) can adapt its **fli
 ## Research stage
 
 We have a **physics-linked, falsifiable proof-of-concept** and an evidence-rich simulator. We do **not** have a validated GPS-denied, collision-robust, jointly optimized aerial LoRa system or a field-calibrated journal result yet. The next meaningful milestone is to pass the safety gate and demonstrate route/SF/alert coordination under new, unseen environmental conditions.
+
+## Follow-up experiments: safety, route/SF coupling, and full-flight energy
+
+### Actual native physics safety (not a CAD-only check)
+The old native MuJoCo flight logger checked clearance against industrial obstacles but omitted static city buildings. It now computes city-wide signed collision clearance using a conservative broadphase (exact for all safety-critical distances), with randomized and obstacle-center regression checks. The new comparison keeps the same 20 deterministic wind-force cases per controller (2 airframes x 2 routes x 5 force settings). Safe means completion AND zero contacts AND minimum clearance of at least 0.25 m.
+
+- Original controller: 12/20 safe missions.
+- Higher-authority position control: 14/20.
+- Bounded-integral disturbance compensation: 11/20.
+- Conservative obstacle-distance acceleration barrier: 10/20 (commonly stalls).
+- Closing-speed-aware acceleration barrier: 13/20 (still exceeds clearance limits and fails under high force).
+
+All five failed this declared envelope. The latter two variants are separate, non-default experiments, not a field-certified collision avoidance system. Evidence: results/wind_robustness, results/barrier_guard, results/barrier_ttc.
+
+### Joint route and spreading factor is no longer only predicted
+The preflight selector uses only synthetic observed RSSI, busy-channel fractions, known static geometry and a flight-time proxy. Its choice of a route and fixed spreading factor is subsequently subjected to *real synthetic packet replay on physical MuJoCo traces*. There are 200 matched cases in each of three versions: initial selector; selector with a 20%-of-deadline LoRa airtime budget; and a third version that falls back to shorter-route adaptive LoRa when observed busy fraction reaches 0.20.
+
+Heavy UAV, harsh-interference scenario (20 seeds): shortest/adaptive baseline PDR=0.551 and timely-critical=0.725; initial joint selector PDR=0.594, timely=0.638; airtime-budgeted selector PDR=0.546, timely=0.475; congestion-guarded selector PDR=0.556, timely=0.713. The guarded controller mitigates its own introduced error but DOES NOT beat baseline safety-alert timeliness. Evidence: results/joint_gate, results/joint_gate_v2, results/joint_gate_v3.
+
+All parameters and thresholds were developed after studying the five scenario profiles. These are post-hoc development experiments and cannot establish out-of-distribution gains; radio sync is still optimistic.
+
+### Flight-energy proxy reverses the radio-only narrative
+Flight duration matters. The total quadrotor ideal-hover induced-power proxy follows (mg)^(3/2) / sqrt(2 rho A), with A = 4*pi*R^2. Assumed rotor radii are 0.11 m for the 1.325-kg model and 0.023 m for the 27-g model; assumed air density 1.225 kg/m^3 and efficiency 0.55. These are ILLUSTRATIVE, not OEM-verified rotor or battery data. For the 1.325-kg model, the 13.28-s radio-aware detour adds an estimated 1,854 J of hovering-power cost, while saving just 4.93 J of modeled LoRa TX energy under 4-dB shadowing. The overall energy advantage is reversed **under these assumptions**. Evidence: analysis/flight_energy_proxy.py and results/flight_energy_proxy. Background: A. M. Perez Gordillo et al., Energies 12(2):261, DOI 10.3390/en12020261.
+
+### Localization-error allowance added, but not SLAM
+The map-known A* planner can conservatively inflate obstacle clearance by three times a user-supplied localization standard deviation. This is only an uncertainty-budget primitive; it does not infer actual 3-D pose, perform SLAM covariance propagation or establish GPS-denied autonomy.
+
+### Strict next gates
+- Physics: independently seeded wind phases, at least two native city layouts and close-range obstacle cases; zero contacts, clearance >=0.25 m and 100% mission completion inside the declared design envelope.
+- Communications: real LoRa radio calibration, reception-time SF sync, channel access, realistic queue and deadline tracking; measure energy from actual TX, RX, onboard processing and propulsion.
+- Joint autonomy: tune an objective for critical-alert missed-deadline risk, full mission energy, localization uncertainty, and collision risk on training scenarios, then evaluate WITHOUT threshold tuning on genuinely unseen scenes.
+- Academic: verify whether the experimental-paper title and scope remains within the accepted review abstract's conference permission; keep the paper including all figures and references <=8 pages.
+
