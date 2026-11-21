@@ -144,8 +144,19 @@ def build_trajectory(method,solids,*,start=START,goal=GOAL,
             times=[0.]
             for i in range(1,len(points)):
                 d=math.dist(points[i-1],points[i])
-                average=max(.10,min(speed,(speed_caps[i-1]+speed_caps[i])/2))
-                times.append(times[-1]+d/average)
+                v0=speed_caps[i-1]
+                v1=speed_caps[i]
+                # A bounded-acceleration trapezoidal (or triangular) speed
+                # schedule. Dividing by mean endpoint speed overestimates
+                # time for corner-to-corner segments that accelerate between
+                # the knots; that falsely rejected development routes.
+                peak=min(speed,math.sqrt(max(0.,effort*d+.5*(v0*v0+v1*v1))))
+                t_acc=(peak-v0)/effort
+                t_brake=(peak-v1)/effort
+                d_acc=max(0.,(peak*peak-v0*v0)/(2*effort))
+                d_brake=max(0.,(peak*peak-v1*v1)/(2*effort))
+                coast=max(0.,d-d_acc-d_brake)
+                times.append(times[-1]+t_acc+t_brake+coast/max(.01,peak))
             if times[-1]>240.:
                 reasons['time_budget']+=1
                 continue
