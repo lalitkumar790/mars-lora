@@ -87,7 +87,7 @@ def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None,
             print(scenario,airframe,
                   f"joint PDR {row['pdr_joint']:.3f}; deadline {row['critical_deadline_ratio_joint']:.3f}; "
                   f"short baseline {row['critical_deadline_ratio_short_adaptive']:.3f}; "
-                  f"SF {row['average_sf']:.2f}",flush=True)
+                  f"fixed SF {row['average_fixed_sf']:.2f}",flush=True)
     with (out/"summary.csv").open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=list(summary[0]))
         w.writeheader();w.writerows(summary)
