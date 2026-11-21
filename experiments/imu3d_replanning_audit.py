@@ -72,7 +72,7 @@ def evaluate(output="results/imu3d_replanning",hybrid=False,city_seeds=CITIES):
           "Unplanned, unsafe and incomplete missions are included as failures in the full experimental denominator",
           "Position ATE is measured on executed flights only and cannot validate mission safety",
           "No LoRa credit is assigned to physically failed flights"
-        ]},indent=2)+"\\n")
+        ]},indent=2)+"\n")
     print(json.dumps(summary,indent=2),flush=True)
     return summary
 if __name__=="__main__":
