@@ -1,0 +1,48 @@
+name: Frozen joint LoRa policy replication on two additional urban cities
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/unseen-city-replication.yml'
+permissions:
+  contents: write
+concurrency:
+  group: mars-lora-city-replication
+  cancel-in-progress: true
+jobs:
+  replicate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Install native MuJoCo
+        run: python -m pip install mujoco==3.3.2
+      - name: Verify frozen estimator margin and model-based radio policy
+        run: python -m unittest tests.test_unseen_city mujoco_sim.test_clearance_grid -v
+      - name: Run fully held-out city seeds without retuning policy
+        run: python -m experiments.unseen_city_validation --city-seeds 15193 77099 --output results/unseen_city_replication
+      - name: Publish every full-physics pass and failure with paired radio data
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          tar -czf /tmp/unseen-replication.tgz results/unseen_city_replication
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            tar -xzf /tmp/unseen-replication.tgz
+            git add results/unseen_city_replication
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'results: second unseen-city replication without retuning LoRa or flight policy [skip ci]'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt*2))
+          done
+          exit 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: second-urban-holdout-replication
+          path: results/unseen_city_replication/*
