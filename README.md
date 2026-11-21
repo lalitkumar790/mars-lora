@@ -110,3 +110,13 @@ The **default browser mission** is now RF-aware 3D A*, not the old preplanned 7 
 Root causes addressed: the old fixed goal and seeded city, A* refusal under the experimental SLAM setting, false obstacle brakes triggered by ground contact or non-travel-direction LiDAR returns, and asynchronous drone CAD status updates. A* transparently switches to physics-truth **reference navigation**, because planar 2D SLAM has not been validated for this larger 3D urban mission.
 
 **Scientific separation:** random browser scenarios are exploratory, not automatically included in the published comparisons. The paper's fixed-seed physics/LoRa datasets remain reproducible in GitHub. Parks, trees, windows and street decorations are visual-only; urban structural buildings have matching MuJoCo collision geometry.
+
+## Building-to-building urban inspection missions
+
+Two new options in the browser simulator:
+- **Building-to-building inspection · shortest-safe**
+- **Building-to-building inspection · LoRa-aware** (default)
+
+Press **Generate NEW city + start selected mission**. The site planner chooses **two distinct, separated urban buildings**, locates collision-safe standoff observation points, computes **three 3D A* legs** (base → building A → building B → base), and commands the same MuJoCo quadrotor to fly the joined trajectory. At each inspection stop it holds position for three simulated seconds and updates the site-completion counter. Stops are shown as highlighted green rings in 3D and numbered dots on the top-down flight map. Every new start chooses a fresh city seed and different building sites; both aircraft use the same physically collidable urban building definitions as the map-known planner.
+
+**Important:** These are overhead/adjacent building *inspection visits*, not rooftop landings or autonomous close-contact construction-site surveys. The current 3D planner uses a known static map and MuJoCo reference position; it does **not** yet supply a fully validated GPS-denied SLAM state estimator or moving-object replanner. Decorative parks and trees are visual assets and are not included in the collision/SF propagation models. Publication-grade results continue to come only from the fixed-seed reproducible research workflow, not these exploratory random flights.
