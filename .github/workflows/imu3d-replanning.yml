@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'mars_lora/lidar_imu3d.py'
+      - 'mujoco_sim/validate_mission.py'
       - 'tests/test_lidar_imu3d.py'
       - 'experiments/imu3d_replanning_audit.py'
       - '.github/workflows/imu3d-replanning.yml'
