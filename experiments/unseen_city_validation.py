@@ -20,7 +20,6 @@ from mars_lora.urban_scene import city
 from mars_lora.deadline_gate import choose_deadline_route
 from mars_lora.route_gate import simulated_pilot
 from experiments.replay_mujoco_radio import trial,load_trajectory
-from mujoco_sim.validate_mission import run
 from analysis.flight_energy_proxy import ASSUMPTIONS,hover_proxy
 
 # 37021 is the original training/visualization city; never use it here.
@@ -55,6 +54,9 @@ def write_csv(path,rows,keys):
         w=csv.DictWriter(f,fieldnames=keys);w.writeheader();w.writerows(rows)
 
 def evaluate(output="results/unseen_city",city_seeds=CITY_SEEDS):
+    # Import native MuJoCo only when executing the physical experiment;
+    # pure planner/unit tests must run without its optional dependency.
+    from mujoco_sim.validate_mission import run
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     manifest={
         "city_seeds":list(city_seeds),
