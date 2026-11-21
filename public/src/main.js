@@ -7,7 +7,7 @@ import {loadAirframeCAD,PHYSICAL_AIRFRAMES} from './airframes.js';
 import {withCity,addCityToScene,regenerateCity,CITY_BUILDINGS,ACTIVE_CITY_SEED} from './city.js';
 import {WaypointTracker} from './trajectory.js';
 import {scanHazard} from './avoidance.js';
-import {planInteractiveRoute,predictCoverage,randomUrbanGoal} from './rf_route_planner.js';
+import {planInteractiveRoute,planBuildingSiteMission,predictCoverage,randomUrbanGoal} from './rf_route_planner.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -115,6 +115,7 @@ let airframe='heavy', mjMass=1.325, armX=.14,armY=.18, momentScale=1, modelThrus
 let visualInitialized=false;
 const pathTracker=new WaypointTracker();let pathError=0,speedReference=0;
 let currentPlan=null,previousUrbanGoal=null,urbanMissionCounter=0,missionCitySeed=ACTIVE_CITY_SEED;
+let siteDwellStart=null;const inspectedSites=new Set();
 let lastHorizontalScan=null;
 let sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};let hazard={blocked:false,distance:Infinity};let obstacleHoldTime=0;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
@@ -158,7 +159,7 @@ function regenerateScenario(seed){
  mujoco.mj_forward(model,data);
  rotorState=Array(4).fill(mjMass*9.81/4);
  desired=[0,0,.5];accumulator=0;
- pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
+ pathTracker.reset();siteDwellStart=null;inspectedSites.clear();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
  radio.reset();lastRadio=-1;flightLog=[];lastLog=lastUi=lastTrace=0;
  tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  slam.reset();slamLog.length=0;lastScan=-1;previousYaw=null;lastObservableTime=0;
@@ -184,9 +185,25 @@ function controller(){
  const wp=waypointPositions[waypointIndex],delta=[wp[0]-nx,wp[1]-ny,wp[2]-pos[2]];
  const dist=Math.hypot(...delta);
  const speed3=Math.hypot(vel[0],vel[1],vel[2]);
- if(dist<.5 && speed3<.65){
-  if(waypointIndex===waypointPositions.length-1){mission=false;setMode('Mission complete');}
-  else goTo(waypointIndex+1);
+ const site=currentPlan?.sites?.find(s=>s.waypointIndex===waypointIndex);
+ let inspectingSite=false;
+ if(dist<.7 && speed3<.85 && site && !inspectedSites.has(waypointIndex)){
+   if(siteDwellStart===null){
+     siteDwellStart=data.time;
+     report('Arrived at '+site.building+' — 3-second inspection hover, then continue to next site');
+   }
+   if(data.time-siteDwellStart>=3){
+     inspectedSites.add(waypointIndex);siteDwellStart=null;
+     $('siteProgress').textContent='Completed '+inspectedSites.size+' / '+currentPlan.sites.length+' sites';
+     report('Inspection recorded at '+site.building+'; proceeding');
+     if(waypointIndex<waypointPositions.length-1)goTo(waypointIndex+1);
+   }else inspectingSite=true;
+ }else if(dist<.7 && speed3<.85 && !site){
+   if(waypointIndex===waypointPositions.length-1){
+     mission=false;
+     setMode(currentPlan?.sites?.length?'All sites inspected — returned to base':'Mission complete');
+     $('plannerStatus').textContent='MISSION COMPLETE: '+inspectedSites.size+' building sites inspected; returned to base.';
+   }else goTo(waypointIndex+1);
  }
  const target=waypointPositions[waypointIndex];
  const guidance=pathTracker.update(waypointIndex,waypointPositions,[nx,ny],missionSpeed);
@@ -197,8 +214,8 @@ function controller(){
  const rising=target[2]>=3.8 && pos[2]<target[2]-.35;
  // Continuous path targeting: project onto path segment, look ahead,
  // and slow down as the segment end approaches (rather than chase points).
- desired[0]=rising?nx:guidance.target[0];
- desired[1]=rising?ny:guidance.target[1];
+ desired[0]=inspectingSite?wp[0]:(rising?nx:guidance.target[0]);
+ desired[1]=inspectingSite?wp[1]:(rising?ny:guidance.target[1]);
  desired[2]=target[2];
  pathError=guidance.crossTrack;
  speedReference=Math.hypot(...guidance.velocity);
@@ -481,7 +498,8 @@ on('mission',()=>{
    $('navSource').value='truth';
    report('A* requires map-known reference navigation: automatically switched away from experimental 2D GPS-denied SLAM. This is not GPS-free flight.');
  }
- const isAStar=kind==='astar_shortest'||kind==='astar_rf';
+ const isSites=kind==='sites_rf'||kind==='sites_shortest';
+ const isAStar=isSites||kind==='astar_shortest'||kind==='astar_rf';
  let route=kind==='mapping'?mappingWaypoints:missionWaypoints;
  if(isAStar){
    try{
@@ -489,16 +507,24 @@ on('mission',()=>{
       // MuJoCo with the same collision geometry the A* planner observes.
       const seed=Math.floor(Math.random()*0x100000000)>>>0;
       regenerateScenario(seed);
-      const goal=randomUrbanGoal(previousUrbanGoal);
-      currentPlan=planInteractiveRoute(kind==='astar_rf'?'rf_aware':'shortest',airframe==='crazyflie'?.08:.32,{goal});
+      const method=(kind==='astar_rf'||kind==='sites_rf')?'rf_aware':'shortest';
+      let goal;
+      if(isSites){
+        currentPlan=planBuildingSiteMission(method,airframe==='crazyflie'?.08:.32,{count:2});
+        goal=currentPlan.sites.at(-1).position;
+      }else{
+        goal=randomUrbanGoal(previousUrbanGoal);
+        currentPlan=planInteractiveRoute(method,airframe==='crazyflie'?.08:.32,{goal});
+      }
       previousUrbanGoal=goal;urbanMissionCounter++;
       route=currentPlan.route;
-      $('missionIdentity').textContent='Flight #'+urbanMissionCounter+' · city seed '+seed+' · goal '+goal.map(v=>v.toFixed(0)).join(', ')+' m';
-      $('plannerStats').textContent='NEW randomized '+currentPlan.method+' mission #'+urbanMissionCounter+'; goal '+currentPlan.goal.join(', ')+'m · '+currentPlan.expanded+' A* expansions. City and physics colliders regenerated together.';
+      $('missionIdentity').textContent='Flight #'+urbanMissionCounter+' · city seed '+seed+' · '+(isSites?currentPlan.siteCount+' building sites + return': 'goal '+goal.map(v=>v.toFixed(0)).join(', ')+' m');
+      $('siteProgress').textContent=isSites?'Ready: '+currentPlan.sites.map((s,i)=>'Site '+(i+1)+' '+s.building).join(' → ')+' → Base':'Single destination mission';
+      $('plannerStats').textContent='NEW randomized '+currentPlan.method+' mission #'+urbanMissionCounter+'; '+(isSites?currentPlan.siteCount+' building inspection sites and return-to-base': 'goal '+currentPlan.goal.join(', ')+'m')+' · '+currentPlan.expanded+' A* expansions. Physics city and planner share collision objects.';
       $('planDistance').textContent=currentPlan.length_m.toFixed(1)+' m';
       $('planClearance').textContent=currentPlan.clearance.toFixed(2)+' m';
       $('planRF').textContent=(currentPlan.coverage.reduce((a,b)=>a+b,0)/currentPlan.coverage.length*100).toFixed(0)+'%';
-      $('plannerStatus').textContent='ROUTE READY: automatically climbing to 4 m, then following a new collision-checked path.';
+      $('plannerStatus').textContent='ROUTE READY: climbing to 4 m, then '+(isSites?'visiting building sites with inspection hovers and returning to base.':'following a new collision-checked route.');
       paused=false;status('PHYSICS ONLINE');
       
 
@@ -512,9 +538,9 @@ on('mission',()=>{
  if(!isAStar && plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
    report('Mission refused: clearance envelope violates 0.5 m threshold.');return;
  }
- hazard={blocked:false,distance:Infinity};mission=true;pathTracker.reset();goTo(0);
+ hazard={blocked:false,distance:Infinity};siteDwellStart=null;inspectedSites.clear();mission=true;pathTracker.reset();goTo(0);
  if(isAStar){
-   setMode(currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
+   setMode(isSites?'Cross-building inspection mission':currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
    report('Running randomized map-known 3D route '+currentPlan.length_m.toFixed(1)+' m. City seed '+missionCitySeed+'; ground-truth position is used for this A* demonstration.');
  }else if($('missionType').value==='mapping'){
    setMode('GPS-denied landmark survey');
@@ -530,7 +556,7 @@ on('cityCamera',()=>{
  follow=false;camera.position.set(52,-65,57);orbit.target.set(0,0,8);orbit.update();
  report('City overview: inspecting the physically collidable urban canyon. Use OrbitControls to zoom into streets.');
 });
-on('reset',()=>{if(!ready)return;pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;currentPlan=null;desired=[0,0,.5];waypointIndex=0;flightLog=[];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;siteDwellStart=null;inspectedSites.clear();pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;currentPlan=null;desired=[0,0,.5];waypointIndex=0;flightLog=[];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -593,7 +619,7 @@ async function initialize(){
 }
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
- paused=true;ready=false;airframe=e.target.value;pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};
+ paused=true;ready=false;airframe=e.target.value;siteDwellStart=null;inspectedSites.clear();pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};
  mission=false;currentPlan=null;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
