@@ -98,3 +98,15 @@ This repository now contains a genuine **map-known 3D route optimization experim
 **Representative controlled result (Skydio-derived, 4 dB shadowing, 20 seeds):** the shortest-route adaptive policy has mean application PDR 0.432, alert on-time 0.500 and P95 AoI 28.56 s; the RF-aware route with identical adaptive radio settings yields mean PDR 0.784, alert on-time 0.838 and P95 AoI 4.33 s. Planned distance rises from 54 m to 80 m and flight time from 105.23 s to 118.51 s. The planner is trained only on deterministic obstruction geometry, but **planning and simulated evaluation use the same uncalibrated propagation model**, so these results cannot yet be generalized to hardware or unseen cities.
 
 **Not yet accomplished:** truly simultaneous optimization of route + SF + schedules under localization uncertainty, reliable 3D GPS-denied SLAM, randomized-wind physics trials, independent RF simulator/hardware calibration, and a field-ready collision-avoidance controller. The radio update simulation remains outside the onboard stabilization loop.
+
+## Randomized browser-city flights (repaired)
+The **default browser mission** is now RF-aware 3D A*, not the old preplanned 7 m inspection demo. Each press of **Generate NEW city + start selected mission**:
+1. Generates a new 32-bit seed and repositions/spaces urban buildings, leaving wide flight corridors, grass parks and plazas.
+2. Rebuilds the matching MuJoCo collision scene, clears the previous flight trace/telemetry and resets the UAV to the takeoff position.
+3. Chooses a different destination among valid open-airspace cells and solves a fresh 3D collision-checked route (geometric A* or expected-RF-weighted A*).
+4. Commands initial climb to 4 m and only then follows the lateral route. The LoRa-aware option uses idealized expected RF quality, not future random fading.
+5. Displays an explicit mission number, city seed, destination, planned length, static clearance and the live controller error.
+
+Root causes addressed: the old fixed goal and seeded city, A* refusal under the experimental SLAM setting, false obstacle brakes triggered by ground contact or non-travel-direction LiDAR returns, and asynchronous drone CAD status updates. A* transparently switches to physics-truth **reference navigation**, because planar 2D SLAM has not been validated for this larger 3D urban mission.
+
+**Scientific separation:** random browser scenarios are exploratory, not automatically included in the published comparisons. The paper's fixed-seed physics/LoRa datasets remain reproducible in GitHub. Parks, trees, windows and street decorations are visual-only; urban structural buildings have matching MuJoCo collision geometry.
