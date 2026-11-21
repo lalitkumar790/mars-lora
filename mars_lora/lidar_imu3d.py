@@ -102,6 +102,31 @@ class InertialMapEstimator:
             self.velocity[axis]+=accel_world[axis]*dt
             self.position[axis]+=old*dt+.5*accel_world[axis]*dt*dt
         self.sigma_m=min(5.,math.sqrt(self.sigma_m**2+self.process_sigma_m_sqrt_s**2*dt))
+    def correct_altitude(self,measured_z,gain=.65):
+        """Noisy barometer altimeter update, not simulator truth input."""
+        if not math.isfinite(measured_z):
+            raise ValueError("Invalid barometer measurement")
+        self.position[2]+=gain*(measured_z-self.position[2])
+        self.velocity[2]*=.96
+
+    def correct_horizontal_flow(self,measured_vx,measured_vy,gain=.35):
+        """Noisy measured horizontal optical-flow velocity, not truth velocity."""
+        for axis,observed in enumerate((measured_vx,measured_vy)):
+            if not math.isfinite(observed):
+                raise ValueError("Invalid optical-flow measurement")
+            self.velocity[axis]+=gain*(observed-self.velocity[axis])
+
+    def correct_planar_lidar(self,position_xy,accepted):
+        """Fallback 2D scan-to-known-map registration in sparse 3D geometry."""
+        if accepted:
+            for axis in (0,1):
+                self.position[axis]+=.80*(position_xy[axis]-self.position[axis])
+            self.sigma_m=max(.06,self.sigma_m*.68)
+            self.accepted+=1
+        else:
+            self.rejected+=1
+            self.sigma_m=min(5.,self.sigma_m+.012)
+
     def correct(self,ranges,boxes):
         candidate,accepted,loss,hits=register_scan(self.position,self.yaw,ranges,boxes)
         if accepted:
