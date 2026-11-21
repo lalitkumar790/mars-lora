@@ -103,7 +103,12 @@ const waypointObjects=[];
 function useRoute(route){
  waypointPositions=route;plannedLine.geometry.dispose();plannedLine.geometry=new THREE.BufferGeometry().setFromPoints(route.map(p=>new THREE.Vector3(...p)));plannedLine.computeLineDistances();
  for(const obj of waypointObjects){scene.remove(obj);obj.geometry.dispose();obj.material.dispose();}waypointObjects.length=0;
- for(const [x,y,z] of route){const m=new THREE.Mesh(new THREE.TorusGeometry(.35,.035,8,24),new THREE.MeshBasicMaterial({color:0xc6a974,transparent:true,opacity:.85}));m.position.set(x,y,z);scene.add(m);waypointObjects.push(m);}
+ for(let i=0;i<route.length;i++){
+  const [x,y,z]=route[i],isSite=Boolean(currentPlan?.sites?.some(site=>site.waypointIndex===i));
+  const m=new THREE.Mesh(new THREE.TorusGeometry(isSite?.85:.35,isSite?.085:.035,8,24),
+   new THREE.MeshBasicMaterial({color:isSite?0x55edbd:0xc6a974,transparent:true,opacity:.9}));
+  m.position.set(x,y,z);scene.add(m);waypointObjects.push(m);
+ }
 }
 let waypointPositions=missionWaypoints;
 for(let i=0;i<waypointPositions.length;i++){
@@ -394,7 +399,14 @@ function drawMissionMap(pos,obstructed){
   ctx.fillStyle='#8b4854';ctx.globalAlpha=.8;
   ctx.fillRect(px(o.x-o.hx),py(o.y+o.hy),o.hx*2*scale,o.hy*2*scale);
  }
- ctx.globalAlpha=1;ctx.strokeStyle=currentPlan?.method==='rf_aware'?'#79e1ab':'#d8a759';ctx.lineWidth=2;
+ ctx.globalAlpha=1;
+ if(currentPlan?.sites)for(let i=0;i<currentPlan.sites.length;i++){
+   const site=currentPlan.sites[i];
+   ctx.beginPath();ctx.arc(px(site.position[0]),py(site.position[1]),8,0,2*Math.PI);
+   ctx.fillStyle=inspectedSites.has(site.waypointIndex)?'#54e0aa':'#ffdb81';ctx.fill();
+   ctx.fillStyle='#112438';ctx.font='bold 10px sans-serif';ctx.fillText(String(i+1),px(site.position[0])-3,py(site.position[1])+3);
+ }
+ ctx.strokeStyle=currentPlan?.method==='rf_aware'?'#79e1ab':'#d8a759';ctx.lineWidth=2;
  ctx.setLineDash([5,4]);ctx.beginPath();
  way.forEach((p,i)=>i===0?ctx.moveTo(px(p[0]),py(p[1])):ctx.lineTo(px(p[0]),py(p[1])));ctx.stroke();ctx.setLineDash([]);
  ctx.strokeStyle=obstructed?'#ffac77':'#61ddeb';ctx.lineWidth=1;ctx.beginPath();
@@ -481,7 +493,7 @@ function frame(now){
    const d=target.clone().sub(orbit.target);camera.position.addScaledVector(d,.08);orbit.target.lerp(target,.08);
   }
   for(let i=0;i<waypointObjects.length;i++){
-   waypointObjects[i].material.color.set((mission&&waypointIndex===i)?0x65e2ff:0xc6a974);
+   waypointObjects[i].material.color.set((mission&&waypointIndex===i)?0x65e2ff:(currentPlan?.sites?.some(site=>site.waypointIndex===i)?0x55edbd:0xc6a974));
   }
  }
  orbit.update();renderer.render(scene,camera);
