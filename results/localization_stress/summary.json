@@ -1,0 +1,37 @@
+{
+  "cases": 32,
+  "safe": 26,
+  "by_drift": [
+    {
+      "drift_m_sqrt_s": 0.0,
+      "cases": 8,
+      "safe": 8,
+      "mean_ate_m": 0.028037500000000007
+    },
+    {
+      "drift_m_sqrt_s": 0.01,
+      "cases": 8,
+      "safe": 8,
+      "mean_ate_m": 0.12563749999999999
+    },
+    {
+      "drift_m_sqrt_s": 0.03,
+      "cases": 8,
+      "safe": 7,
+      "mean_ate_m": 0.3694625
+    },
+    {
+      "drift_m_sqrt_s": 0.06,
+      "cases": 8,
+      "safe": 3,
+      "mean_ate_m": 1.0391375
+    }
+  ],
+  "limitations": [
+    "Brownian drift is synthetic, not sensor-based SLAM",
+    "attitude and velocity remain simulator truth proxies",
+    "static 3-sigma planning margin assumes 0.10 m localization error",
+    "two previously examined cities, mild deterministic wind",
+    "fixed-seed results do not quantify general field safety"
+  ]
+}
