@@ -75,4 +75,9 @@ def evaluate(output="results/imu3d_replanning"):
         ]},indent=2)+"\n")
     print(json.dumps(summary,indent=2),flush=True)
     return summary
-if __name__=="__main__":evaluate()
+if __name__=="__main__":
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--output",default="results/imu3d_replanning_v2")
+    args=parser.parse_args()
+    evaluate(output=args.output)
