@@ -25,13 +25,13 @@ jobs:
         run: python -m pip install mujoco==3.3.2
       - name: Validate exact broadphase obstacle clearance
         run: python -m unittest mujoco_sim.test_clearance_grid -v
-      - name: Test physical distance-barrier controller at 20 wind levels
-        run: python -m experiments.barrier_validation
+      - name: Test closing-speed-aware barrier V2 over 20 MuJoCo missions
+        run: python -m experiments.barrier_validation --controller barrier_ttc --output results/barrier_ttc
       - name: Publish all candidate failures and passes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          tar -czf /tmp/barrier-results.tgz results/barrier_guard
+          tar -czf /tmp/barrier-results.tgz results/barrier_ttc
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
@@ -45,5 +45,5 @@ jobs:
           exit 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: barrier-controller-research-validation
+          name: barrier-v2-controller-research-validation
           path: results/barrier_guard/*
