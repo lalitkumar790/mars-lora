@@ -1,6 +1,13 @@
 name: Phase 8 conservative stopping-envelope audit
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mars_lora/replan_envelope.py'
+      - 'mujoco_sim/validate_mission.py'
+      - 'tests/test_replan_envelope.py'
+      - 'experiments/phase8_envelope.py'
+      - '.github/workflows/phase8-envelope.yml'
   push:
     paths:
       - 'mars_lora/replan_envelope.py'
