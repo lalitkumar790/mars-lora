@@ -13,7 +13,8 @@ import mujoco
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from mars_lora.urban_scene import add_city_mjcf
-from mars_lora.rf_astar import SOLIDS, signed_clearance as full_city_clearance
+from mars_lora.rf_astar import SOLIDS, INDUSTRIAL, signed_clearance as full_city_clearance
+from mars_lora.urban_scene import city, CITY_SEED
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -52,10 +53,10 @@ def make_clearance_grid(solids=SOLIDS):
     return dict(cells)
 
 CLEARANCE_GRID=make_clearance_grid()
-def fast_city_clearance(p,radius=0.):
+def fast_city_clearance(p,radius=0.,grid=None):
     from mars_lora.rf_astar import signed_clearance
     key=(math.floor(p[0]/CLEARANCE_CELL_M),math.floor(p[1]/CLEARANCE_CELL_M))
-    neighbors=CLEARANCE_GRID.get(key,())
+    neighbors=(CLEARANCE_GRID if grid is None else grid).get(key,())
     if not neighbors:return CLEARANCE_CAP
     return min(CLEARANCE_CAP,signed_clearance(p,neighbors)-radius)
 
@@ -67,14 +68,15 @@ def quat_to_rpy(q):
             math.asin(clamp(2*(w*y-z*x),-1,1)),
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
-        controller_mode='legacy',wind_phase=0.):
+        controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
     root=Path(__file__).resolve().parents[1]
     xml=(root/"public"/("crazyflie.xml" if airframe=="crazyflie" else "quad.xml")).read_text()
-    model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml))
+    model=mujoco.MjModel.from_xml_string(add_city_mjcf(xml,seed=city_seed))
+    scene_grid=(CLEARANCE_GRID if city_seed==CITY_SEED else make_clearance_grid(INDUSTRIAL+tuple(city(city_seed))))
     data=mujoco.MjData(model)
     mujoco.mj_forward(model,data)
     mass=.027 if airframe=="crazyflie" else 1.325
@@ -129,7 +131,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # but integral state is reset at waypoint handoffs and
                 # suspended near walls to avoid windup into obstacles.
                 gain,damping,accel_limit,tilt_limit=1.45,1.95,2.25,.23
-                clearance_now=fast_city_clearance(p[:3],.08 if airframe=='crazyflie' else .32)
+                clearance_now=fast_city_clearance(p[:3],.08 if airframe=='crazyflie' else .32,grid=scene_grid)
                 safe_to_integrate=clearance_now>1.5 and math.hypot(v[0],v[1])<2.5
                 if safe_to_integrate:
                     x_integral=clamp(x_integral+.02*(desired[0]-p[0]),-.75,.75)
@@ -151,15 +153,15 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
                 radius=.08 if airframe=='crazyflie' else .32
-                clearance_now=fast_city_clearance(p[:3],radius)
+                clearance_now=fast_city_clearance(p[:3],radius,grid=scene_grid)
                 # finite differences of exact AABB signed distance, from
                 # the same physical environment used by MuJoCo collisions.
                 if clearance_now<2.2:
                     step=.18
                     px=(p[0]+step,p[1],p[2]);mxp=(p[0]-step,p[1],p[2])
                     py=(p[0],p[1]+step,p[2]);myp=(p[0],p[1]-step,p[2])
-                    nx=(fast_city_clearance(px,radius)-fast_city_clearance(mxp,radius))/(2*step)
-                    ny=(fast_city_clearance(py,radius)-fast_city_clearance(myp,radius))/(2*step)
+                    nx=(fast_city_clearance(px,radius,grid=scene_grid)-fast_city_clearance(mxp,radius,grid=scene_grid))/(2*step)
+                    ny=(fast_city_clearance(py,radius,grid=scene_grid)-fast_city_clearance(myp,radius,grid=scene_grid))/(2*step)
                     norm=math.hypot(nx,ny)
                     if norm>1e-5:
                         nx/=norm;ny/=norm
@@ -207,7 +209,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         # Check every physics step, not just the downsampled CSV rate.
         # The prior audit only checked the industrial fixtures, ignoring
         # city buildings present in the actual MuJoCo collision model.
-        clearance=fast_city_clearance(data.qpos[:3],.08 if airframe=='crazyflie' else .32)
+        clearance=fast_city_clearance(data.qpos[:3],.08 if airframe=='crazyflie' else .32,grid=scene_grid)
         minimum=min(minimum,clearance)
         contacts+=int(data.ncon>0)
         if k%25==0:
@@ -225,7 +227,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         with file.open("w",newline="") as f:
             writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
             writer.writerows(records)
-    result=dict(airframe=airframe,controller_mode=controller_mode,wind_phase=round(float(wind_phase),3),
+    result=dict(airframe=airframe,controller_mode=controller_mode,city_seed=city_seed,wind_phase=round(float(wind_phase),3),
                 safety_holds=safety_holds,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
