@@ -73,10 +73,11 @@ def quat_to_rpy(q):
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
-        localization_seed=0,localization_mode='drift',dynamic_replanning=False):
+        localization_seed=0,localization_mode='drift',dynamic_replanning=False,
+        lidar_blackout_window=None):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
-    if localization_mode not in ('drift','lidar_match','lidar_imu3d'):
+    if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
@@ -113,7 +114,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
     last_replan_time=-100.
-    if localization_mode=='lidar_imu3d':
+    if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
     lidar_accepted=lidar_rejected=0
@@ -130,7 +131,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if localization_drift_m_sqrt_s:
                 for axis in (0,1):
                     localization_bias[axis]+=localization_drift_m_sqrt_s*math.sqrt(localization_dt)*localization_rng.gauss(0.,1.)
-            if localization_mode=='lidar_imu3d':
+            if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
                 # Synthetic IMU packet is generated from *finite differenced*
                 # native velocity plus independent seeded sensor perturbation.
                 # The estimator/controller only consume the noisy packet.
@@ -144,13 +145,42 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 inertial.predict(measured_accel,
                                 float(v[5])+localization_rng.gauss(0.,.003),
                                 localization_dt)
+                if localization_mode=='lidar_imu3d_hybrid':
+                    # Actual native truth ONLY generates noisy surrogate
+                    # barometer and ground-optical-flow sensor observations.
+                    z_obs=float(p[2])+localization_rng.gauss(0.,.06)
+                    inertial.correct_altitude(z_obs)
+                    if p[2]<12.:  # flow degenerates above texture/range limit
+                        flowx=float(v[0])+localization_rng.gauss(0.,.045)
+                        flowy=float(v[1])+localization_rng.gauss(0.,.045)
+                        inertial.correct_horizontal_flow(flowx,flowy)
                 if t>=next_lidar_time:
-                    reading=simulate_scan(tuple(float(x) for x in p[:3]),
-                                          yaw,scene_solids,lidar_rng,
-                                          noise=.06,dropout=.03)
-                    accepted,scan_score,hits=inertial.correct(reading,scene_solids)
-                    if accepted:lidar_accepted+=1
-                    else:lidar_rejected+=1
+                    blackout=(lidar_blackout_window is not None and
+                              lidar_blackout_window[0]<=t<=lidar_blackout_window[1])
+                    if blackout:
+                        inertial.sigma_m=min(5.,inertial.sigma_m+.028)
+                        lidar_rejected+=1
+                    else:
+                        reading=simulate_scan(tuple(float(x) for x in p[:3]),
+                                              yaw,scene_solids,lidar_rng,
+                                              noise=.06,dropout=.03)
+                        accepted,scan_score,hits=inertial.correct(reading,scene_solids)
+                        if accepted:lidar_accepted+=1
+                        else:
+                            lidar_rejected+=1
+                            if localization_mode=='lidar_imu3d_hybrid':
+                                # Independent planar subset provides bearings
+                                # for ground-level known-map correction when
+                                # tilted 3D rays are uninformative.
+                                horizontal=observe_scan(
+                                    (float(p[0]),float(p[1])),yaw,float(p[2]),
+                                    scene_solids,lidar_rng,noise_sigma=.06)
+                                prior_xy=(inertial.position[0],inertial.position[1])
+                                corrected,ok,_=match_scan(
+                                    prior_xy,inertial.yaw,inertial.position[2],
+                                    horizontal,scene_solids)
+                                inertial.correct_planar_lidar(corrected,ok)
+                                if ok:lidar_accepted+=1
                     next_lidar_time+=2.
                 raw_xy=(inertial.position[0],inertial.position[1])
                 nav_xyz=tuple(inertial.position)
@@ -172,19 +202,19 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     lidar_accepted+=1
                 else:lidar_rejected+=1
                 next_lidar_time+=2.0
-            nav_xy=(raw_xy if localization_mode=='lidar_imu3d' else
+            nav_xy=(raw_xy if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') else
                     (raw_xy[0]+map_correction[0],raw_xy[1]+map_correction[1]))
-            if localization_mode!='lidar_imu3d':
+            if localization_mode not in ('lidar_imu3d','lidar_imu3d_hybrid'):
                 nav_xyz=(nav_xy[0],nav_xy[1],float(p[2]))
                 nav_velocity=tuple(float(x) for x in v[:3])
                 nav_yaw=yaw
-            navigation_error=(math.dist(nav_xyz,p[:3]) if localization_mode=='lidar_imu3d'
+            navigation_error=(math.dist(nav_xyz,p[:3]) if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid')
                               else math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1]))
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
             target=waypoints[idx]
-            if localization_mode=='lidar_imu3d' and dynamic_replanning and (
+            if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') and dynamic_replanning and (
                 inertial.sigma_m>.20 and t-last_replan_time>24. and
                 map_replans<3 and idx<len(waypoints)-1):
                 # Dynamic uncertainty-triggered map-known A*: the estimator
@@ -341,6 +371,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 localization_seed=localization_seed,
                 localization_mode=localization_mode,
                 dynamic_replanning=dynamic_replanning,
+                lidar_blackout_window=lidar_blackout_window,
                 map_replans=map_replans,map_replan_failures=map_replan_failures,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
