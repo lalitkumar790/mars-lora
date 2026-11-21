@@ -13,6 +13,7 @@ import mujoco
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from mars_lora.urban_scene import add_city_mjcf
+from mars_lora.rf_astar import signed_clearance as full_city_clearance
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -36,8 +37,9 @@ def quat_to_rpy(q):
     return (math.atan2(2*(w*x+y*z),1-2*(x*x+y*y)),
             math.asin(clamp(2*(w*y-z*x),-1,1)),
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
-def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,controller_mode='legacy'):
-    if controller_mode not in ('legacy','high_authority'):
+def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
+        controller_mode='legacy',wind_phase=0.):
+    if controller_mode not in ('legacy','high_authority','integral_guard'):
         raise ValueError('Unsupported controller mode')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
@@ -53,6 +55,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     desired=[0.,0.,.5]
     rotor=[mass*9.81/4]*4
     idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
+    x_integral=y_integral=0.0; safety_holds=0;max_lateral_error=0.
     records=[];cross_track=[]
     dt=model.opt.timestep
     steps=round(duration/dt)
@@ -75,7 +78,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if L>1e-9:
                 ux,uy=dx/L,dy/L
                 along=clamp((p[0]-ax0)*ux+(p[1]-ay0)*uy,0,L)
-                lookahead=1.5 if controller_mode=='high_authority' else .9
+                lookahead=1.5 if controller_mode=='high_authority' else (1.1 if controller_mode=='integral_guard' else .9)
                 lead=clamp(along+lookahead,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
@@ -84,14 +87,31 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             desired[1]=p[1] if rising else goaly
             desired[2]=target[2]
             if controller_mode=='high_authority':
-                # Experimental extra control authority: more forward bias,
-                # faster correction and larger permitted tilt. This may
-                # create NEW contact risks and must be validated separately.
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
+            elif controller_mode=='integral_guard':
+                # Experimental bounded integral disturbance rejection:
+                # persistent offsets can counter smooth constant crosswind,
+                # but integral state is reset at waypoint handoffs and
+                # suspended near walls to avoid windup into obstacles.
+                gain,damping,accel_limit,tilt_limit=1.45,1.95,2.25,.23
+                clearance_now=full_city_clearance(p[:3])-(.08 if airframe=="crazyflie" else .32)
+                safe_to_integrate=clearance_now>1.5 and math.hypot(v[0],v[1])<2.5
+                if safe_to_integrate:
+                    x_integral=clamp(x_integral+.02*(desired[0]-p[0]),-.75,.75)
+                    y_integral=clamp(y_integral+.02*(desired[1]-p[1]),-.75,.75)
+                else:
+                    x_integral*=.95;y_integral*=.95
+                # Near structure, scale permitted acceleration down;
+                # collisions are still measured independently of this.
+                if clearance_now<1.0:
+                    safety_holds+=1
+                    accel_limit=min(accel_limit,1.1)
             else:
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
-            ax=clamp(gain*(desired[0]-p[0])-damping*v[0],-accel_limit,accel_limit)
-            ay=clamp(gain*(desired[1]-p[1])-damping*v[1],-accel_limit,accel_limit)
+            xi=x_integral if controller_mode=='integral_guard' else 0.
+            yi=y_integral if controller_mode=='integral_guard' else 0.
+            ax=clamp(gain*(desired[0]-p[0])-damping*v[0]+.9*xi,-accel_limit,accel_limit)
+            ay=clamp(gain*(desired[1]-p[1])-damping*v[1]+.9*yi,-accel_limit,accel_limit)
             bx=math.cos(yaw)*ax+math.sin(yaw)*ay
             by=-math.sin(yaw)*ax+math.cos(yaw)*ay
             rt=clamp(-by/9.81,-tilt_limit,tilt_limit)
@@ -107,14 +127,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 demand=clamp(force/4+mx*y/(4*army*army)-my*x/(4*armx*armx)+yaw_trim,0,max_thrust)
                 rotor[i]+=(1-math.exp(-.02/(.045 if airframe=='crazyflie' else .08)))*(demand-rotor[i])
                 data.ctrl[i]=clamp(rotor[i],0,max_thrust)
-            data.xfrc_applied[1,0]=wind*(.07 if airframe=='crazyflie' else 1)*math.sin(t*.6)-.18*mass*v[0]
-            data.xfrc_applied[1,1]=wind*(.07 if airframe=='crazyflie' else 1)*math.cos(t*.43)-.18*mass*v[1]
+            data.xfrc_applied[1,0]=wind*(.07 if airframe=='crazyflie' else 1)*math.sin(t*.6+wind_phase)-.18*mass*v[0]
+            data.xfrc_applied[1,1]=wind*(.07 if airframe=='crazyflie' else 1)*math.cos(t*.43+.73*wind_phase)-.18*mass*v[1]
             data.xfrc_applied[1,2]=-.12*mass*v[2]
             tilt=math.degrees(math.hypot(roll,pitch))
             max_tilt=max(max_tilt,tilt)
         mujoco.mj_step(model,data)
         # Check every physics step, not just the downsampled CSV rate.
-        clearance=signed_clearance(data.qpos[:3],.08 if airframe=="crazyflie" else .32)
+        # The prior audit only checked the industrial fixtures, ignoring
+        # city buildings present in the actual MuJoCo collision model.
+        clearance=full_city_clearance(data.qpos[:3])-(.08 if airframe=='crazyflie' else .32)
         minimum=min(minimum,clearance)
         contacts+=int(data.ncon>0)
         if k%25==0:
@@ -132,7 +154,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         with file.open("w",newline="") as f:
             writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
             writer.writerows(records)
-    result=dict(airframe=airframe,controller_mode=controller_mode,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
+    result=dict(airframe=airframe,controller_mode=controller_mode,wind_phase=round(float(wind_phase),3),
+                safety_holds=safety_holds,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
                 max_tracking_error_m=round(max_error,2),
