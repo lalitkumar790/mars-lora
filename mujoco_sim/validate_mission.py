@@ -76,11 +76,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
         altitude_slew_m_s=None,trajectory_speed_limits=None,
-        trajectory_reference=None,online_risk_monitor=False,eskf_shadow=False):
+        trajectory_reference=None,online_risk_monitor=False,eskf_shadow=False,
+        eskf15_shadow=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if eskf15_shadow and localization_mode!='lidar_imu3d_hybrid':
+        raise ValueError('15-state shadow requires original hybrid sensor stream')
     if eskf_shadow and localization_mode!='lidar_imu3d_hybrid':
         raise ValueError('ESKF shadow comparison requires native hybrid sensor stream')
     if altitude_slew_m_s is not None and (not math.isfinite(altitude_slew_m_s) or altitude_slew_m_s<=0):
@@ -148,6 +151,28 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     if eskf_shadow:
         from mars_lora.lidar_imu_eskf import TranslationalESKF
         shadow=TranslationalESKF.initial(tuple(float(x) for x in data.qpos[:3]))
+    body15=None;body_imu_sensor=None
+    body15_errsq=0.;body15_precontact_sq=0.;body15_samples=0.;body15_precontact_samples=0
+    body15_coverage99=0;body15_lidar3d_accept=body15_lidar3d_reject=0
+    body15_first_error_1m=None;body15_first_error_5m=None
+    body15_precontact_attitude_squared=0.;body15_precontact_attitude_count=0
+    body15_planar_accept=body15_planar_reject=0;body15_max_error=0.
+    observable_scan_count=0;unobservable_scan_count=0
+    observable_ranks={0:0,1:0,2:0,3:0}
+    last_informative_scan_t=None;longest_observation_gap_s=0.
+    first_unobservable_scan=None;first_high_residual_scan=None
+    scan_observability_rows=[]
+
+    if eskf15_shadow:
+        from mars_lora.body_imu_eskf15 import InertialESKF15
+        from mars_lora.body_imu_surrogate import BodyIMUSurrogate
+        body15=InertialESKF15.initial(
+            launch=tuple(float(x) for x in data.qpos[:3]),
+            quat_wb=tuple(float(x) for x in data.qpos[3:7]))
+        body_imu_sensor=BodyIMUSurrogate(seed=localization_seed+33071)
+        body_imu_sensor.reset(float(data.time),
+            tuple(float(x) for x in data.qvel[:3]),
+            tuple(float(x) for x in data.qpos[3:7]))
     lidar_accepted=lidar_rejected=0
     next_lidar_time=1.0
     localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
@@ -178,6 +203,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                 localization_dt)
                 if shadow is not None:
                     shadow.predict(measured_accel,localization_dt)
+                if body15 is not None and t>body_imu_sensor.previous_t+1.e-9:
+                    packet=body_imu_sensor.measure(
+                        t,tuple(float(a) for a in v[:3]),
+                        tuple(float(a) for a in p[3:7]))
+                    body15.predict(packet.specific_force_b,
+                                   packet.angular_rate_b,packet.dt_s)
                 if localization_mode=='lidar_imu3d_hybrid':
                     # Actual native truth ONLY generates noisy surrogate
                     # barometer and ground-optical-flow sensor observations.
@@ -185,12 +216,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                     inertial.correct_altitude(z_obs)
                     if shadow is not None:
                         shadow.update_altitude(z_obs,std_m=.06)
+                    if body15 is not None:
+                        body15.correct_altitude(z_obs,std_m=.06)
                     if p[2]<12.:  # flow degenerates above texture/range limit
                         flowx=float(v[0])+localization_rng.gauss(0.,.045)
                         flowy=float(v[1])+localization_rng.gauss(0.,.045)
                         inertial.correct_horizontal_flow(flowx,flowy)
                         if shadow is not None:
                             shadow.update_horizontal_flow(flowx,flowy,std_m=.045)
+                        if body15 is not None:
+                            body15.correct_horizontal_flow(flowx,flowy,std_m=.045)
                 if t>=next_lidar_time:
                     blackout=(lidar_blackout_window is not None and
                               lidar_blackout_window[0]<=t<=lidar_blackout_window[1])
@@ -211,6 +246,47 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                 shadow_scan_rejected+=int(not check.accepted)
                             else:
                                 shadow_scan_rejected+=1
+                        if body15 is not None:
+                            from mars_lora.body_imu_eskf15 import quat_to_rot
+                            from mars_lora.lidar_imu3d import register_scan
+                            rot=quat_to_rot(body15.quat_wb)
+                            yaw15=math.atan2(float(rot[1,0]),float(rot[0,0]))
+                            pos15,valid15,score15,hits15=register_scan(
+                                tuple(body15.position),yaw15,reading,scene_solids)
+                            # Diagnostic quality must be computed from the
+                            # estimated pose before applying a correction.
+                            from mars_lora.lidar_observability import assess_scan_observability
+                            observe=assess_scan_observability(
+                                tuple(body15.position),yaw15,reading,scene_solids)
+                            observable_ranks[observe.geometric_rank]+=1
+                            if observe.informative:
+                                observable_scan_count+=1
+                                last_informative_scan_t=t
+                            else:
+                                unobservable_scan_count+=1
+                                if first_unobservable_scan is None:
+                                    first_unobservable_scan=round(float(t),3)
+                            if (math.isfinite(observe.rms_range_residual_m) and
+                                observe.rms_range_residual_m>.30 and
+                                first_high_residual_scan is None):
+                                first_high_residual_scan=round(float(t),3)
+                            scan_observability_rows.append({
+                                "t_s":round(float(t),3),
+                                "hits":observe.valid_hits,
+                                "usable":observe.used_hits,
+                                "rank":observe.geometric_rank,
+                                "info_min":round(observe.smallest_info_eigenvalue,4),
+                                "rms_range_residual_m":(
+                                    round(observe.rms_range_residual_m,4)
+                                    if math.isfinite(observe.rms_range_residual_m)
+                                    else None),
+                                "informative":observe.informative,
+                                "map_fit_accepted":bool(valid15)})
+                            if valid15:
+                                observation=body15.correct_xyz(pos15,std_m=.20)
+                                body15_lidar3d_accept+=int(observation.accepted)
+                                body15_lidar3d_reject+=int(not observation.accepted)
+                            else:body15_lidar3d_reject+=1
                         accepted,scan_score,hits=inertial.correct(reading,scene_solids)
                         if accepted:lidar_accepted+=1
                         else:
@@ -240,6 +316,17 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                         shadow_planar_rejected+=int(not update.accepted)
                                     else:
                                         shadow_planar_rejected+=1
+                                if body15 is not None:
+                                    rot=quat_to_rot(body15.quat_wb)
+                                    yaw15=math.atan2(float(rot[1,0]),float(rot[0,0]))
+                                    xy15,valid15,_=match_scan(
+                                        tuple(body15.position[:2]),yaw15,
+                                        float(body15.position[2]),horizontal,scene_solids)
+                                    if valid15:
+                                        outcome=body15.correct_xy(xy15,std_m=.25)
+                                        body15_planar_accept+=int(outcome.accepted)
+                                        body15_planar_reject+=int(not outcome.accepted)
+                                    else:body15_planar_reject+=1
                                 inertial.correct_planar_lidar(corrected,ok)
                                 if ok:lidar_accepted+=1
                     next_lidar_time+=2.
@@ -290,6 +377,36 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if first_contact is None:
                 legacy_precontact_squared+=navigation_error**2
                 legacy_precontact_count+=1
+            if body15 is not None:
+                # Count time since last geometrically informative scan;
+                # do not treat a barometer/flow correction as 3D observability.
+                last=last_informative_scan_t
+                if last is not None:
+                    longest_observation_gap_s=max(
+                        longest_observation_gap_s,float(t)-last)
+                err15=math.dist(body15.position,p[:3])
+                body15_samples+=1
+                body15_errsq+=err15*err15
+                body15_max_error=max(body15_max_error,err15)
+                if err15>=1. and body15_first_error_1m is None:
+                    body15_first_error_1m={"t_s":round(float(t),3),
+                        "error_m":round(float(err15),3),
+                        "sigma_position_rms_m":round(float(body15.sigma_position_rms_m),3)}
+                if err15>=5. and body15_first_error_5m is None:
+                    body15_first_error_5m={"t_s":round(float(t),3),
+                        "error_m":round(float(err15),3),
+                        "sigma_position_rms_m":round(float(body15.sigma_position_rms_m),3)}
+                body15_coverage99+=int(body15.position_nees(p[:3])<=11.345)
+                if first_contact is None:
+                    body15_precontact_samples+=1
+                    body15_precontact_sq+=err15*err15
+                    from mars_lora.body_imu_eskf15 import quat_body_delta
+                    attitude_delta=quat_body_delta(
+                        tuple(float(a) for a in body15.quat_wb),
+                        tuple(float(a) for a in p[3:7]))
+                    angle=math.sqrt(sum(float(a)*float(a) for a in attitude_delta))
+                    body15_precontact_attitude_squared+=angle*angle
+                    body15_precontact_attitude_count+=1
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
@@ -589,6 +706,18 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                "estimated_velocity_xyz":[round(float(a),3) for a in nav_velocity],
                "actual_velocity_xyz":[round(float(a),3) for a in data.qvel[:3]],
                "localization_error_m":round(float(math.dist(nav_xyz,data.qpos[:3])),3),
+               "body15_attitude_error_deg":(
+                   round(math.degrees(float(math.sqrt(sum(a*a for a in quat_body_delta(
+                       tuple(body15.quat_wb),tuple(data.qpos[3:7])))))),3)
+                   if body15 is not None else None),
+               "body15_accel_bias_estimate":(
+                   [round(float(a),5) for a in body15.accel_bias] if body15 is not None else None),
+               "body15_gyro_bias_estimate":(
+                   [round(float(a),6) for a in body15.gyro_bias] if body15 is not None else None),
+               "body15_position_error_m":(round(float(math.dist(body15.position,data.qpos[:3])),3)
+                                            if body15 is not None else None),
+               "body15_position_sigma_rms_m":(round(float(body15.sigma_position_rms_m),3)
+                                               if body15 is not None else None),
                "shadow_eskf_xyz":([round(float(x),3) for x in shadow.position]
                                    if shadow is not None else None),
                "shadow_eskf_error_m":(round(float(math.dist(shadow.position,data.qpos[:3])),3)
@@ -620,6 +749,34 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 navigation_ate_rmse_m=round(math.sqrt(localization_sq_sum/max(1,localization_updates)),4),
                 navigation_max_error_m=round(localization_max_error,4),
                 eskf_shadow_enabled=eskf_shadow,
+                eskf15_shadow_enabled=eskf15_shadow,
+                lidar_observable_scans=observable_scan_count,
+                lidar_unobservable_scans=unobservable_scan_count,
+                lidar_observability_rank_histogram=observable_ranks,
+                lidar_longest_observation_gap_s=round(longest_observation_gap_s,3),
+                lidar_first_unobservable_scan_t=first_unobservable_scan,
+                lidar_first_high_residual_scan_t=first_high_residual_scan,
+                lidar_observability_timeline=scan_observability_rows,
+                eskf15_error_1m_first=body15_first_error_1m,
+                eskf15_error_5m_first=body15_first_error_5m,
+                eskf15_precontact_attitude_rmse_deg=(
+                    round(math.degrees(math.sqrt(
+                        body15_precontact_attitude_squared/max(1,body15_precontact_attitude_count))),3)
+                    if body15 is not None else None),
+                eskf15_shadow_rmse_m=(round(math.sqrt(body15_errsq/max(1,body15_samples)),4)
+                                      if body15 is not None else None),
+                eskf15_shadow_precontact_rmse_m=(
+                    round(math.sqrt(body15_precontact_sq/max(1,body15_precontact_samples)),4)
+                    if body15 is not None else None),
+                eskf15_shadow_max_error_m=(round(body15_max_error,4) if body15 is not None else None),
+                eskf15_shadow_cov99=(round(body15_coverage99/max(1,body15_samples),4)
+                                     if body15 is not None else None),
+                eskf15_shadow_sigma_position_rms_m=(
+                    round(body15.sigma_position_rms_m,4) if body15 is not None else None),
+                eskf15_lidar3d_accepted=body15_lidar3d_accept,
+                eskf15_lidar3d_rejected=body15_lidar3d_reject,
+                eskf15_planar_accepted=body15_planar_accept,
+                eskf15_planar_rejected=body15_planar_reject,
                 legacy_precontact_rmse_m=round(math.sqrt(legacy_precontact_squared/max(1,legacy_precontact_count)),4),
                 eskf_shadow_precontact_rmse_m=(round(math.sqrt(shadow_precontact_squared/max(1,shadow_precontact_count)),4)
                                                if shadow is not None else None),
