@@ -22,8 +22,12 @@ jobs:
           python-version: '3.11'
       - run: python -m pip install mujoco==3.3.2
       - run: python -m experiments.phase12_contact_causality
+      - name: Measure false-confidence alarms on safe development cases
+        run: python -m experiments.phase12_confidence_specificity
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: phase12-first-contact-causes
-          path: results/phase12b_contact_causality/*
+          path: |
+            results/phase12b_contact_causality/*
+            results/phase12_confidence_specificity_dev/*
