@@ -36,7 +36,8 @@ def _samples(points,spacing=1.5):
 
 def predict_candidate(name,points,pilot_rssi_dbm,busy_fraction,receiver=GCS,
                       flight_speed_mps=1.2,deadline_s=3.,
-                      missed_alert_weight=100.,time_weight=.15):
+                      missed_alert_weight=100.,time_weight=.15,
+                      airtime_budget_fraction=None):
     if not points or len(points)<2:raise ValueError("Need existing planned route")
     if not isfinite(pilot_rssi_dbm) or not 0<=busy_fraction<=1:
         raise ValueError("Invalid radio pilot")
@@ -55,14 +56,28 @@ def predict_candidate(name,points,pilot_rssi_dbm,busy_fraction,receiver=GCS,
     for sf in sorted(SENSITIVITY_DBM):
         toa=airtime_s(sf,12)
         if toa>deadline_s:continue
+        if airtime_budget_fraction is not None:
+            if not 0<airtime_budget_fraction<=1:raise ValueError('Invalid deadline airtime budget')
+            # Reserve time for queue delay, channel occupancy and possible
+            # asynchronous receiver coordination, not just PHY airtime.
+            if toa>deadline_s*airtime_budget_fraction*(1-busy_fraction):continue
         probability=sum(
            (1.-busy_fraction)/
            (1.+exp(-max(-55.,min(55.,rssi-SENSITIVITY_DBM[sf]))/1.8))
            for rssi in estimates)/len(estimates)
         # No inferred retry opportunities: one attempt per alert.
-        score=(missed_alert_weight*(1-probability) + time_weight*flight_time
-               + .12*toa*10.) # airtime/TX power penalty, not total energy.
-        candidate=Candidate(name,sf,probability,1-probability,toa,flight_time,score)
+        if airtime_budget_fraction is None:
+            timely_proxy=probability
+            airtime_penalty=.12*toa*10.
+        else:
+            # Conservative queue-risk proxy: even a received packet is
+            # not useful to the critical control loop if it arrives late.
+            remaining=max(0.,1.-toa/(deadline_s*max(.05,1-busy_fraction)))
+            timely_proxy=probability*remaining
+            airtime_penalty=10.*toa
+        score=(missed_alert_weight*(1-timely_proxy) + time_weight*flight_time
+               + airtime_penalty)
+        candidate=Candidate(name,sf,timely_proxy,1-timely_proxy,toa,flight_time,score)
         if best is None or candidate.score<best.score:best=candidate
     if best is None:raise RuntimeError("No SF meets the alert airtime limit")
     return best
