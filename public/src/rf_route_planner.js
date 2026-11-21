@@ -157,7 +157,8 @@ export function planBuildingSiteMission(method='rf_aware',radius=.32,{count=2,ra
   }
  }
  if(siteCandidates.length<count)throw Error('Not enough accessible building inspection stands');
- const shuffled=[...siteCandidates].sort(()=>random()-.5);
+ const shuffled=[...siteCandidates];
+ for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
  const picked=[],visited=new Set();
  for(const entry of shuffled){
   if(visited.has(entry.building))continue;
