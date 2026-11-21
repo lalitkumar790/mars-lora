@@ -69,6 +69,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             speed3=math.sqrt(sum(v[i]*v[i] for i in range(3)))
             if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
+                if controller_mode=='integral_guard':
+                    x_integral=y_integral=0.
                 target=waypoints[idx]
             # Match browser lookahead tracking: project current XY onto the
             # segment, advance by 0.9m, and brake at each corner.
