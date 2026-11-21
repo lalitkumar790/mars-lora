@@ -58,18 +58,44 @@ export function simulateScan(truth, {beams=48,maxRange=17,seed=0}={}) {
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export class PlanarSLAM {
  constructor({size=100,resolution=.35,seed=314159}={}) {
-   this.size=size;this.resolution=resolution;this.seed=seed;
+   this.initialSize=size;this.size=size;this.resolution=resolution;this.seed=seed;
    this.map=new Float32Array(size*size);
+   this.originX=-size*resolution/2;this.originY=-size*resolution/2;
+   this.maxSize=1024;this.expansions=0;this.mapLimitReached=false;
    this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};
    this.lastT=null;this.scanCount=0;this.matches=0;
    this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];
    this.initialized=false;this.lastScan=null;
  }
- reset(){this.map.fill(0);this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
+ reset(){this.size=this.initialSize;this.map=new Float32Array(this.size*this.size);this.originX=-this.size*this.resolution/2;this.originY=this.originX;this.expansions=0;this.mapLimitReached=false;this.pose={x:0,y:0,yaw:0};this.odomPose={x:0,y:0,yaw:0};this.lastT=null;this.scanCount=0;this.matches=0;this.lastCorrection=0;this.lastFitness=0;this.lastHits=0;this.path=[];this.initialized=false;this.lastScan=null;}
  index(x,y) {
-   const gx=Math.floor(x/this.resolution+this.size/2),gy=Math.floor(y/this.resolution+this.size/2);
+   const gx=Math.floor((x-this.originX)/this.resolution),gy=Math.floor((y-this.originY)/this.resolution);
    return gx>=0&&gy>=0&&gx<this.size&&gy<this.size?gy*this.size+gx:-1;
  }
+ /** Double the mapped area and preserve every previously observed cell.
+  * A hard 1024-cell axis limit prevents runaway localization from exhausting RAM.
+  * This expands the visible map; it is NOT true SLAM/loop closure.
+  */
+ ensureBounds(x,y,margin=0){
+   if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(margin)||margin<0)return false;
+   while(x-margin<this.originX||y-margin<this.originY||
+         x+margin>=this.originX+this.size*this.resolution||
+         y+margin>=this.originY+this.size*this.resolution){
+     if(this.size*2>this.maxSize){this.mapLimitReached=true;return false;}
+     const old=this.size,next=old*2,shift=old/2;
+     const expanded=new Float32Array(next*next);
+     for(let row=0;row<old;row++){
+       expanded.set(this.map.subarray(row*old,(row+1)*old),(row+shift)*next+shift);
+     }
+     this.map=expanded;this.size=next;
+     this.originX-=shift*this.resolution;this.originY-=shift*this.resolution;
+     this.expansions++;
+   }
+   return true;
+ }
+ bounds(){return {minX:this.originX,minY:this.originY,
+   maxX:this.originX+this.size*this.resolution,
+   maxY:this.originY+this.size*this.resolution};}
  integrateOdom(dt,vx,vy,yawRate) {
    // Input represents body-frame VIO/IMU-velocity pseudo-measurements, not GPS.
    for(const p of [this.pose,this.odomPose]){
@@ -128,6 +154,9 @@ export class PlanarSLAM {
      this.integrateOdom(dt,bodyVx,bodyVy,yawRate);
    }
    this.lastT=t;
+   // Preserve all explored cells when the UAV crosses the initial 35 m map.
+   // Expand prior to score() so registration can also use older scans.
+   this.ensureBounds(this.pose.x,this.pose.y,scan.maxRange);
    this.match(scan);
    for(let i=0;i<scan.ranges.length;i++){
      const d=scan.ranges[i],angle=this.pose.yaw+scan.angles[i],c=Math.cos(angle),s=Math.sin(angle);
@@ -141,7 +170,7 @@ export class PlanarSLAM {
    this.lastScan=scan;this.lastHits=scan.valid;
    this.scanCount++;this.initialized=true;
    this.path.push({...this.pose,t});
-   if(this.path.length>400)this.path.shift();
+   if(this.path.length>10000)this.path.shift();
    return this.pose;
  }
  occupancyPercentage(){
