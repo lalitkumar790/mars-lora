@@ -128,7 +128,7 @@ let wind=.25,missionSpeed=1.5,flightLog=[];
 let rotorState=[0,0,0,0];let lastDebug={target:[0,0,.5],positionError:0,altError:0,thrust:0,tilt:0,windForce:0,clearance:Infinity,nearest:'none',contacts:0,controlHz:50,collisionCount:0};
 const debugSamples=[];let lastDebugPlot=-1,lastWarning=-50;
 const radio=new LiveLink();let lastRadio=-1;
-const slam=new PlanarSLAM();const slamLog=[];let lastScan=-1,lastObservableTime=0,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
+const slam=new PlanarSLAM();let slamView='full';const slamLog=[];let lastScan=-1,lastObservableTime=0,slamSeed=23,odomBiasX=.015,odomBiasY=-.012,odomYawBias=.0015,previousYaw=null,slamTruthError=0;
 const simStep=.004;
 const snap=(v,min,max)=>Math.max(min,Math.min(max,v));
 function report(message) {
@@ -365,20 +365,35 @@ function drawSLAMMap(){
  const cv=$('slamMap');if(!cv)return;
  const ctx=cv.getContext('2d');if(!ctx)return;const w=cv.width,h=cv.height;
  ctx.fillStyle='#0d2231';ctx.fillRect(0,0,w,h);
- const s=slam.size,r=slam.resolution,scale=Math.min(w,h)/(s*r);
- const tx=x=>w/2+x*scale,ty=y=>h/2-y*scale;
+ const bounds=slam.bounds(),pad=19;
+ // Full view retains every explored cell. Follow mode pans without changing
+ // the underlying map; toggling back to full reveals older observations.
+ let minX=bounds.minX,maxX=bounds.maxX,minY=bounds.minY,maxY=bounds.maxY;
+ if(slamView==='follow'){
+   const half=17.5;
+   minX=slam.pose.x-half;maxX=slam.pose.x+half;
+   minY=slam.pose.y-half;maxY=slam.pose.y+half;
+ }
+ const scale=Math.min((w-2*pad)/(maxX-minX),(h-2*pad)/(maxY-minY));
+ const tx=x=>w/2+(x-(minX+maxX)/2)*scale;
+ const ty=y=>h/2-(y-(minY+maxY)/2)*scale;
+ // Draw only observed cells to keep the unknown world unfilled.
+ const s=slam.size,r=slam.resolution;
  for(let gy=0;gy<s;gy++)for(let gx=0;gx<s;gx++){
-  const value=slam.map[gy*s+gx];if(Math.abs(value)<.22)continue;
-  ctx.fillStyle=value>0?'rgba(239,178,103,'+(Math.min(.95,.2+value*.25))+')':'rgba(72,121,145,'+(Math.min(.55,.07-value*.1))+')';
-  const x=(gx-s/2)*r,y=(gy-s/2)*r;
-  ctx.fillRect(tx(x),ty(y+r),Math.max(1.2,scale*r),Math.max(1.2,scale*r));
+   const value=slam.map[gy*s+gx];if(Math.abs(value)<.22)continue;
+   const x=slam.originX+gx*r,y=slam.originY+gy*r;
+   if(x+r<minX||x>maxX||y+r<minY||y>maxY)continue;
+   ctx.fillStyle=value>0?'rgba(239,178,103,'+Math.min(.95,.2+value*.25)+')':'rgba(72,121,145,'+Math.min(.55,.07-value*.1)+')';
+   ctx.fillRect(tx(x),ty(y+r),Math.max(1,scale*r),Math.max(1,scale*r));
  }
  ctx.strokeStyle='#5ed7ea';ctx.lineWidth=1.5;ctx.beginPath();
- for(let i=0;i<slam.path.length;i++){
-  const p=slam.path[i];if(i===0)ctx.moveTo(tx(p.x),ty(p.y));else ctx.lineTo(tx(p.x),ty(p.y));
- }ctx.stroke();
+ slam.path.forEach((p,i)=>i===0?ctx.moveTo(tx(p.x),ty(p.y)):ctx.lineTo(tx(p.x),ty(p.y)));
+ ctx.stroke();
  ctx.fillStyle='#e6f2ff';ctx.beginPath();ctx.arc(tx(slam.pose.x),ty(slam.pose.y),5,0,2*Math.PI);ctx.fill();
- ctx.font='12px sans-serif';ctx.fillStyle='#c0d9ed';ctx.fillText('Occupancy grid: blue free · amber occupied · white pose',8,17);
+ ctx.font='12px sans-serif';ctx.fillStyle='#c0d9ed';
+ ctx.fillText('Blue free · amber occupied · white estimated pose',8,17);
+ ctx.fillText(slamView.toUpperCase()+' · '+(s*r).toFixed(1)+' m grid · '+slam.scanCount+' scans',8,h-8);
+ if(slam.mapLimitReached){ctx.fillStyle='#ffae7f';ctx.fillText('Map expansion limit reached',8,34);}
 }
 function drawMissionMap(pos,obstructed){
  const cv=$('missionMap');if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;
