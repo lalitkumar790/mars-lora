@@ -54,10 +54,10 @@ def write_csv(path,rows,keys):
     with path.open("w",newline="") as f:
         w=csv.DictWriter(f,fieldnames=keys);w.writeheader();w.writerows(rows)
 
-def evaluate(output="results/unseen_city"):
+def evaluate(output="results/unseen_city",city_seeds=CITY_SEEDS):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     manifest={
-        "city_seeds":list(CITY_SEEDS),
+        "city_seeds":list(city_seeds),
         "radio_seeds":list(RADIO_SEEDS),
         "city_training_seed_excluded":37021,
         "localization_sigma_m_supplied_not_estimated":SIGMA_M,
@@ -84,7 +84,7 @@ def evaluate(output="results/unseen_city"):
     }
     (out/"manifest.json").write_text(json.dumps(manifest,indent=2)+"\n")
     flights=[];trials=[];scenes=[]
-    for city_seed in CITY_SEEDS:
+    for city_seed in city_seeds:
         solids=INDUSTRIAL+tuple(city(city_seed))
         record={"city_seed":city_seed,"buildings":len(solids)-len(INDUSTRIAL)}
         try:
@@ -188,7 +188,7 @@ def evaluate(output="results/unseen_city"):
                 summary.append(row)
     if summary:write_csv(out/"paired_summary.csv",summary,list(summary[0]))
     (out/"summary.json").write_text(json.dumps({
-       "cities_requested":len(CITY_SEEDS),
+       "cities_requested":len(city_seeds),
        "cities_planned":sum(x["planner_success"] for x in scenes),
        "flight_cases":len(flights),
        "safe_flights":sum(x["safety_pass"] for x in flights),
@@ -199,4 +199,12 @@ def evaluate(output="results/unseen_city"):
     print((out/"summary.json").read_text(),flush=True)
     return summary
 
-if __name__=="__main__":evaluate()
+if __name__=="__main__":
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--output",default="results/unseen_city")
+    parser.add_argument("--city-seeds",type=int,nargs="+",default=list(CITY_SEEDS))
+    args=parser.parse_args()
+    if len(args.city_seeds)!=len(set(args.city_seeds)) or 37021 in args.city_seeds:
+        parser.error("Holdout city seeds must be distinct and exclude training seed 37021")
+    evaluate(output=args.output,city_seeds=tuple(args.city_seeds))
