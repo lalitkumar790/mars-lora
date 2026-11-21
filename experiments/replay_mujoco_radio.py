@@ -85,7 +85,7 @@ def spatial_shadow_field(position, seed, sigma, correlation_m=14.):
 
 
 def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
-          profile=None,spatial_fading=False):
+          profile=None,spatial_fading=False,sf_override=None):
 
     horizon=trace[-1][0]
     N=math.ceil(horizon/step)
@@ -97,6 +97,8 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
     interference=float(settings.get('interference_fraction',.1))
     if exponent<=0 or obstruction_db<0 or not 0<=interference<1:
         raise ValueError('Invalid propagation stress profile')
+    if sf_override is not None and sf_override not in SENSITIVITY_DBM:
+        raise ValueError('SF override must be between 7 and 12')
     rng=random.Random(seed)
     fades=[];fade=0
     for _ in range(N):
@@ -105,7 +107,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
     draws=[rng.random() for _ in range(N)]
     queue=deque()
     generated=delivered=alert_n=alert_ok=expired=0
-    busy_until=0.;sf=9;next_alert=25.;last_ack=-float('inf')
+    busy_until=0.;sf=(sf_override if sf_override is not None else 9);next_alert=25.;last_ack=-float('inf')
     last_sample=0.;aoi=[];outage=[];energy=airtime=0
     nlos=0;changes=0;last_rssi=None;pending=[]
     trace_times=[row[0] for row in trace]
@@ -137,7 +139,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
             queue.append((t,t+3,True,12));generated+=1;alert_n+=1;next_alert+=25
         aoi.append(max(0,t-last_sample))
         outage.append(int(t-last_ack>15))
-        if policy in ('adaptive','priority-adaptive') and k%20==0 and last_rssi is not None:
+        if sf_override is None and policy in ('adaptive','priority-adaptive') and k%20==0 and last_rssi is not None:
             sfnew=next((s for s in range(7,13) if last_rssi>=SENSITIVITY_DBM[s]+8),12)
             sfnew=max(sf-1,min(sf+1,sfnew))
             if sfnew!=sf:
@@ -160,7 +162,7 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
     # credited to on-mission delivery. Avoids overstating deadline success.
     return {
         'propagation_profile':settings.get('name','nominal'),
-        'spatial_fading':spatial_fading,
+        'spatial_fading':spatial_fading,'sf_override':sf_override,
         'policy':policy,'seed':seed,'gcs_x':gcs[0],'gcs_y':gcs[1],'gcs_z':gcs[2],
         'shadow_sigma_db':shadow_sigma,'pdr':delivered/max(1,generated),
         'critical_deadline_ratio':alert_ok/max(1,alert_n),
