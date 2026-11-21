@@ -2,6 +2,7 @@
   {
     "airframe": "heavy",
     "controller_mode": "legacy",
+    "city_seed": 37021,
     "wind_phase": 0.0,
     "safety_holds": 0,
     "completed": true,
@@ -22,6 +23,7 @@
   {
     "airframe": "crazyflie",
     "controller_mode": "legacy",
+    "city_seed": 37021,
     "wind_phase": 0.0,
     "safety_holds": 0,
     "completed": true,
