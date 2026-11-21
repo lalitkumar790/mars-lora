@@ -10,6 +10,7 @@ from bisect import bisect_left
 from collections import deque
 from pathlib import Path
 from statistics import mean,stdev
+from functools import lru_cache
 from mars_lora.channel import airtime_s,SENSITIVITY_DBM,percentile
 from mars_lora.urban_scene import city
 
@@ -52,9 +53,45 @@ def at_time(trace,t):
     mix=max(0.,min(1.,(t-a[0])/max(1e-9,b[0]-a[0])))
     return tuple(a[k]*(1-mix)+b[k]*mix for k in (1,2,3))
 
-def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
+def spatial_shadow_field(position, seed, sigma, correlation_m=14.):
+    """Fixed-seed C1-continuous 3-D shadow field, common across both routes.
+
+    Location-based fades replace non-comparable time-indexed fades for
+    route-comparison stress tests. Not calibrated measured RF propagation.
+    """
+    if sigma==0:return 0.
+    x,y,z=(v/correlation_m for v in position)
+    ix,iy,iz=(math.floor(v) for v in (x,y,z))
+    fx,fy,fz=(v-math.floor(v) for v in (x,y,z))
+    def smooth(t):return t*t*(3-2*t)
+    fx,fy,fz=map(smooth,(fx,fy,fz))
+    total=0.
+    for a in (0,1):
+        for b in (0,1):
+            for c in (0,1):
+                # Deterministic cell-specific independent normals.
+                code=(seed*0x9e3779b1+(ix+a)*0x85ebca6b+
+                      (iy+b)*0xc2b2ae35+(iz+c)*0x27d4eb2f)&0xffffffff
+                weight=(fx if a else 1-fx)*(fy if b else 1-fy)*(fz if c else 1-fz)
+                total+=weight*random.Random(code).gauss(0.,1.)
+    # Finite grid interpolation smooths the field. sigma is a nominal
+    # corner SD; interpolated point SD varies across a cell.
+    return sigma*total
+
+
+def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25,
+          profile=None,spatial_fading=False):
+
     horizon=trace[-1][0]
     N=math.ceil(horizon/step)
+    settings=profile or {}
+    exponent=float(settings.get('path_loss_exponent',4.0))
+    obstruction_db=float(settings.get('obstruction_db',17.0))
+    rx_bias=float(settings.get('rx_bias_db',0.0))
+    extra_nlos=float(settings.get('extra_nlos_loss_db',0.0))
+    interference=float(settings.get('interference_fraction',.1))
+    if exponent<=0 or obstruction_db<0 or not 0<=interference<1:
+        raise ValueError('Invalid propagation stress profile')
     rng=random.Random(seed)
     fades=[];fade=0
     for _ in range(N):
@@ -79,7 +116,8 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
         blocked=obstructed(p,gcs)
         nlos+=int(blocked)
         d=max(1.,math.dist(p,gcs))
-        rssi=14-31.2-40*math.log10(d)-(17 if blocked else 0)+fades[k]
+        shadow=spatial_shadow_field(p,seed,shadow_sigma) if spatial_fading else fades[k]
+        rssi=14-31.2-10*exponent*math.log10(d)-((obstruction_db+extra_nlos) if blocked else 0)+rx_bias+shadow
         # ACKs and telemetry are delivered only after LoRa time-on-air
         # completes, never at the beginning of transmission.
         arrived=[entry for entry in pending if entry[0]<=t+1e-9]
@@ -110,12 +148,14 @@ def trial(trace,policy,seed,gcs,shadow_sigma=4.,step=.25):
         airtime+=toa;energy+=.12*toa
         busy_until=t+toa
         margin=rssi-SENSITIVITY_DBM[sf]
-        probability=.9/(1+math.exp(-max(-55,min(55,margin))/1.8))
+        probability=(1-interference)/(1+math.exp(-max(-55,min(55,margin))/1.8))
         if draws[k]<probability:
             pending.append((busy_until,critical,made,deadline,rssi))
     # Final arrivals still in flight beyond the mission horizon are NOT
     # credited to on-mission delivery. Avoids overstating deadline success.
     return {
+        'propagation_profile':settings.get('name','nominal'),
+        'spatial_fading':spatial_fading,
         'policy':policy,'seed':seed,'gcs_x':gcs[0],'gcs_y':gcs[1],'gcs_z':gcs[2],
         'shadow_sigma_db':shadow_sigma,'pdr':delivered/max(1,generated),
         'critical_deadline_ratio':alert_ok/max(1,alert_n),
