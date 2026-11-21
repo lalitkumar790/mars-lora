@@ -41,7 +41,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <label class="field" for="navSource">Navigation position source</label>
 <select id="navSource"><option value="truth">Physics truth (reference)</option><option value="slam">GPS-denied odometry + scan matching</option></select>
 <p>Select GPS-denied mode before takeoff/reset so the estimated local coordinate frame begins at the launch point. GPS-denied mode uses onboard-style odometry and an online estimated pose for navigation. Ground truth is shown only to evaluate drift and run a simulation-only safety supervisor.</p>
-<section class="controls"><button id="resetSlam" class="full">↺ Reset occupancy map</button></section>
+<section class="controls"><button id="resetSlam" class="full">↺ Reset occupancy map</button><button id="slamView" class="full" aria-pressed="false">⌾ Map view: Full explored area</button></section><p>Full view displays all stored observed cells; follow view pans with the estimated drone position. Unseen regions remain unknown, not filled from the city model.</p>
 <div class="met" style="margin-top:12px">
 <div class="metric"><div class="k">Scan beams / returns</div><div class="v" id="scanBeams">—</div></div>
 <div class="metric"><div class="k">Mapping scans</div><div class="v" id="slamScans">0</div></div>
