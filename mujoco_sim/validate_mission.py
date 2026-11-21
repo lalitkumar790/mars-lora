@@ -77,11 +77,13 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         lidar_blackout_window=None,replan_stopping_envelope=False,
         altitude_slew_m_s=None,trajectory_speed_limits=None,
         trajectory_reference=None,online_risk_monitor=False,eskf_shadow=False,
-        eskf15_shadow=False):
+        eskf15_shadow=False,pose6_shadow=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if pose6_shadow and not eskf15_shadow:
+        raise ValueError('6D observability requires 15-state shadow observer')
     if eskf15_shadow and localization_mode!='lidar_imu3d_hybrid':
         raise ValueError('15-state shadow requires original hybrid sensor stream')
     if eskf_shadow and localization_mode!='lidar_imu3d_hybrid':
@@ -157,6 +159,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     body15_first_error_1m=None;body15_first_error_5m=None
     body15_precontact_attitude_squared=0.;body15_precontact_attitude_count=0
     body15_planar_accept=body15_planar_reject=0;body15_max_error=0.
+    pose6_rng=None;pose6_rows=[];pose6_rank_hist={i:0 for i in range(7)}
+    pose6_full_rank=0;pose6_partial=0
+    if pose6_shadow:
+        pose6_rng=random.Random(localization_seed+901733)
+
     observable_scan_count=0;unobservable_scan_count=0
     observable_ranks={0:0,1:0,2:0,3:0}
     last_informative_scan_t=None;longest_observation_gap_s=0.
@@ -246,6 +253,31 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                 shadow_scan_rejected+=int(not check.accepted)
                             else:
                                 shadow_scan_rejected+=1
+                        if pose6_shadow:
+                            # Independent body-fixed sensor packet, not
+                            # the legacy yaw-only range measurement.
+                            from mars_lora.lidar_pose6_observability import (
+                                simulate_body_scan,assess_pose6)
+                            scan6=simulate_body_scan(
+                                tuple(float(x) for x in p[:3]),
+                                tuple(float(x) for x in p[3:7]),
+                                scene_solids,pose6_rng,noise=.06,dropout=.03)
+                            assessment=assess_pose6(
+                                tuple(body15.position),tuple(body15.quat_wb),
+                                scan6,scene_solids)
+                            pose6_rank_hist[assessment.rank6]+=1
+                            pose6_full_rank+=int(assessment.locally_full_rank)
+                            pose6_partial+=int(not assessment.locally_full_rank)
+                            pose6_rows.append({
+                                "t_s":round(float(t),3),
+                                "rank6":int(assessment.rank6),
+                                "rank_xyz":int(assessment.translation_rank),
+                                "rank_rotation":int(assessment.rotation_rank),
+                                "hits":int(assessment.hits),
+                                "usable_hits":int(assessment.usable),
+                                "fit_rmse_m":(round(float(assessment.residual_rmse_m),4)
+                                    if math.isfinite(assessment.residual_rmse_m) else None),
+                                "full_rank":bool(assessment.locally_full_rank)})
                         if body15 is not None:
                             from mars_lora.body_imu_eskf15 import quat_to_rot
                             from mars_lora.lidar_imu3d import register_scan
@@ -750,6 +782,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 navigation_max_error_m=round(localization_max_error,4),
                 eskf_shadow_enabled=eskf_shadow,
                 eskf15_shadow_enabled=eskf15_shadow,
+                pose6_shadow_enabled=pose6_shadow,
+                pose6_observability_timeline=pose6_rows,
+                pose6_full_rank_scans=pose6_full_rank,
+                pose6_partial_scans=pose6_partial,
+                pose6_rank_histogram=pose6_rank_hist,
                 lidar_observable_scans=observable_scan_count,
                 lidar_unobservable_scans=unobservable_scan_count,
                 lidar_observability_rank_histogram=observable_ranks,
