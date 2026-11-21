@@ -56,7 +56,8 @@ export function checkRoute(route,radius=.32,buffer=.55){
 }
 export function planInteractiveRoute(method='shortest',radius=.32,options={}){
  if(!['shortest','rf_aware'].includes(method))throw Error('Unsupported planner');
- const start=[0,0,0],margin=1.3;
+ const startPosition=options.start??[0,0,4],margin=1.3;
+ const start=[Math.round(startPosition[0]/spacing),Math.round(startPosition[1]/spacing),levels.indexOf(startPosition[2])>=0?levels.indexOf(startPosition[2]):0];
  const goalPosition=options.goal??AIRSPACE_GOAL;
  const goal=[Math.round(goalPosition[0]/spacing),Math.round(goalPosition[1]/spacing),0];
  const nodeSafe=n=>{
@@ -130,4 +131,55 @@ export function randomUrbanGoal(previous=null,random=Math.random){
  }
  if(!choices.length)throw Error('No open airspace destinations in this city');
  return choices[Math.floor(random()*choices.length)];
+}
+
+/** Generate a multi-site urban inspection itinerary.
+ * The UAV flies a standoff pass next to real collidable building blocks,
+ * then visits another independent block and returns to its launch pad.
+ * Each segment is A* checked against the current live MuJoCo city.
+ */
+export function planBuildingSiteMission(method='rf_aware',radius=.32,{count=2,random=Math.random}={}){
+ if(count<1||count>4)throw Error('Site count must be between 1 and 4');
+ const origin=[0,0,4],siteCandidates=[];
+ for(const building of CITY_BUILDINGS){
+  if(Math.hypot(building.x,building.y)<25||Math.hypot(building.x,building.y)>57)continue;
+  const sidePoints=[
+   [building.x+building.hx+5,building.y,4],
+   [building.x-building.hx-5,building.y,4],
+   [building.x,building.y+building.hy+5,4],
+   [building.x,building.y-building.hy-5,4]
+  ];
+  for(const candidate of sidePoints){
+   const p=[Math.round(candidate[0]/spacing)*spacing,Math.round(candidate[1]/spacing)*spacing,4];
+   if(Math.hypot(p[0],p[1])<20||Math.hypot(p[0],p[1])>64)continue;
+   if(signedClearance(p)<radius+2.1)continue;
+   siteCandidates.push({building:building.name,point:p,height_m:building.hz*2});
+  }
+ }
+ if(siteCandidates.length<count)throw Error('Not enough accessible building inspection stands');
+ const shuffled=[...siteCandidates].sort(()=>random()-.5);
+ const picked=[],visited=new Set();
+ for(const entry of shuffled){
+  if(visited.has(entry.building))continue;
+  if(picked.some(p=>Math.hypot(p.point[0]-entry.point[0],p.point[1]-entry.point[1])<21))continue;
+  picked.push(entry);visited.add(entry.building);
+  if(picked.length===count)break;
+ }
+ if(picked.length<count)throw Error('Insufficient mutually separated, collision-safe building sites');
+ const itinerary=[origin,...picked.map(s=>s.point),origin];
+ let fullRoute=[],distance=0,expanded=0,clearance=Infinity;
+ const stops=[];
+ for(let index=1;index<itinerary.length;index++){
+  const leg=planInteractiveRoute(method,radius,{start:itinerary[index-1],goal:itinerary[index]});
+  if(index===1)fullRoute.push(...leg.route);
+  else fullRoute.push(...leg.route.slice(1));
+  distance+=leg.length_m;expanded+=leg.expanded;clearance=Math.min(clearance,leg.clearance);
+  if(index<=picked.length)stops.push({waypointIndex:fullRoute.length-1,building:picked[index-1].building,
+    position:itinerary[index],height_m:picked[index-1].height_m});
+ }
+ const checked=checkRoute(fullRoute,radius,1.3);
+ if(!checked.safe)throw Error('Full building-to-building mission violates clearance');
+ return {method,route:fullRoute,sites:stops,goal:origin,length_m:distance,
+   expanded,clearance:Math.min(clearance,checked.clearance),
+   coverage:fullRoute.map(p=>predictCoverage(p).p),siteCount:stops.length,returnToBase:true};
 }
