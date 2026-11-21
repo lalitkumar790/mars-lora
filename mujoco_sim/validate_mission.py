@@ -68,7 +68,7 @@ def quat_to_rpy(q):
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
         controller_mode='legacy',wind_phase=0.):
-    if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard'):
+    if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
@@ -109,7 +109,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if L>1e-9:
                 ux,uy=dx/L,dy/L
                 along=clamp((p[0]-ax0)*ux+(p[1]-ay0)*uy,0,L)
-                lookahead=1.5 if controller_mode in ('high_authority','barrier_guard') else (1.1 if controller_mode=='integral_guard' else .9)
+                lookahead=1.5 if controller_mode in ('high_authority','barrier_guard','barrier_ttc') else (1.1 if controller_mode=='integral_guard' else .9)
                 lead=clamp(along+lookahead,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
@@ -119,7 +119,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             desired[2]=target[2]
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
-            elif controller_mode=='barrier_guard':
+            elif controller_mode in ('barrier_guard','barrier_ttc'):
                 # Candidate: same nominal control authority as high_authority,
                 # with acceleration projected away from threatening structure.
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
@@ -147,7 +147,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             yi=y_integral if controller_mode=='integral_guard' else 0.
             ax=clamp(gain*(desired[0]-p[0])-damping*v[0]+.9*xi,-accel_limit,accel_limit)
             ay=clamp(gain*(desired[1]-p[1])-damping*v[1]+.9*yi,-accel_limit,accel_limit)
-            if controller_mode=='barrier_guard':
+            if controller_mode in ('barrier_guard','barrier_ttc'):
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
                 radius=.08 if airframe=='crazyflie' else .32
@@ -167,8 +167,15 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         nominal_normal=nx*ax+ny*ay
                         # Two-term control barrier: prevent a negative
                         # closing velocity with a large inward acceleration.
-                        required=clamp(2.3*(1.35-clearance_now)-2.1*v_normal,
-                                       -2.7,2.7)
+                        if controller_mode=='barrier_ttc':
+                            # CBF-inspired soft braking based on approach
+                            # velocity; allow travel through legal corridors.
+                            # This remains empirical and non-certified.
+                            required=clamp(1.5*(.65-clearance_now)-1.6*v_normal,
+                                           -2.7,2.7)
+                        else:
+                            required=clamp(2.3*(1.35-clearance_now)-2.1*v_normal,
+                                           -2.7,2.7)
                         if nominal_normal<required:
                             correction=required-nominal_normal
                             ax+=correction*nx;ay+=correction*ny
