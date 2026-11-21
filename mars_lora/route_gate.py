@@ -25,7 +25,7 @@ def choose_route(pilot_rssi_dbm:float,busy_fraction:float,
     return "rf_aware"
 
 def simulated_pilot(profile:dict,station:tuple,seed:int,position=PILOT_POSITION,
-                    shadow_sigma_db=5.,listening_samples=32):
+                    shadow_sigma_db=5.,listening_samples=32,scene=None):
     """Synthetic preflight beacons and CCA observations, NOT hidden true channel.
 
     The policy gets only the two returned noisy estimates. The simulator
@@ -33,7 +33,7 @@ def simulated_pilot(profile:dict,station:tuple,seed:int,position=PILOT_POSITION,
     """
     d=max(1.,math.dist(position,station))
     los_loss=(float(profile.get("obstruction_db",17.))+
-              float(profile.get("extra_nlos_loss_db",0.))) if obstructed(position,station) else 0.
+              float(profile.get("extra_nlos_loss_db",0.))) if obstructed(position,station) if scene is None else obstructed(position,station,scene) else 0.
     power=(14-31.2-10*float(profile.get("path_loss_exponent",4.))*math.log10(d)
            -los_loss+float(profile.get("rx_bias_db",0.))
            +spatial_shadow_field(position,seed,shadow_sigma_db))
