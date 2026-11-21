@@ -141,6 +141,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
     shadow=None
     shadow_error_squared=0.;shadow_error_max=0.;shadow_samples=0
+    shadow_precontact_squared=0.;shadow_precontact_count=0
+    legacy_precontact_squared=0.;legacy_precontact_count=0
     shadow_nees_99_inside=0;shadow_scan_accepted=0;shadow_scan_rejected=0
     shadow_planar_accepted=0;shadow_planar_rejected=0
     if eskf_shadow:
@@ -279,9 +281,15 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # drives control inputs, the baseline estimator or replans.
                 distance=math.dist(shadow.position,p[:3])
                 shadow_error_squared+=distance*distance
+                if first_contact is None:
+                    shadow_precontact_squared+=distance*distance
+                    shadow_precontact_count+=1
                 shadow_error_max=max(shadow_error_max,distance)
                 shadow_samples+=1
                 shadow_nees_99_inside+=int(shadow.position_nees(p[:3])<=11.345)
+            if first_contact is None:
+                legacy_precontact_squared+=navigation_error**2
+                legacy_precontact_count+=1
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
@@ -581,6 +589,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                "estimated_velocity_xyz":[round(float(a),3) for a in nav_velocity],
                "actual_velocity_xyz":[round(float(a),3) for a in data.qvel[:3]],
                "localization_error_m":round(float(math.dist(nav_xyz,data.qpos[:3])),3),
+               "shadow_eskf_xyz":([round(float(x),3) for x in shadow.position]
+                                   if shadow is not None else None),
+               "shadow_eskf_error_m":(round(float(math.dist(shadow.position,data.qpos[:3])),3)
+                                       if shadow is not None else None),
+               "shadow_eskf_sigma_rms_m":(round(float(shadow.position_rms_sigma_m),3)
+                                           if shadow is not None else None),
                "precontact_navigation_rmse_m":round(math.sqrt(localization_sq_sum/max(1,localization_updates)),3),
                "estimated_sigma_m":(round(float(inertial.sigma_m),3) if inertial else None),
                "reference_elapsed_s":(round(float(data.time-reference_start_t),3)
@@ -606,6 +620,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 navigation_ate_rmse_m=round(math.sqrt(localization_sq_sum/max(1,localization_updates)),4),
                 navigation_max_error_m=round(localization_max_error,4),
                 eskf_shadow_enabled=eskf_shadow,
+                legacy_precontact_rmse_m=round(math.sqrt(legacy_precontact_squared/max(1,legacy_precontact_count)),4),
+                eskf_shadow_precontact_rmse_m=(round(math.sqrt(shadow_precontact_squared/max(1,shadow_precontact_count)),4)
+                                               if shadow is not None else None),
                 eskf_shadow_ate_rmse_m=(round(math.sqrt(shadow_error_squared/max(1,shadow_samples)),4)
                                         if shadow is not None else None),
                 eskf_shadow_max_error_m=(round(shadow_error_max,4) if shadow is not None else None),
