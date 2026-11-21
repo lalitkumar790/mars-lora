@@ -1,0 +1,16 @@
+{
+  "purpose": "Falsify a joint ex-ante map-known route and fixed-SF gate",
+  "scientific_status": "post-hoc development; not independent validation",
+  "completed_trials": 200,
+  "airtime_budget_fraction": 0.2,
+  "congestion_guard": 0.2,
+  "policies": "joint selected route with fixed selected SF and priority scheduling versus both adaptive-SF route baselines",
+  "caveats": [
+    "Threshold weights chosen after inspecting synthetic channel scenario outcomes",
+    "A pilot at the initial position is a poor estimator of full route quality",
+    "Selected static SF is coordinated with receiver at zero setup cost, optimistic",
+    "Same synthetic propagation family used for both planning and evaluation",
+    "Trajectories and safety results are reused, not re-flown in response to radio",
+    "No sensor uncertainty, no GPS-denied SLAM, no real LoRa hardware"
+  ]
+}
