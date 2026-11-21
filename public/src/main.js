@@ -165,7 +165,7 @@ function regenerateScenario(seed){
  rotorState=Array(4).fill(mjMass*9.81/4);
  desired=[0,0,.5];accumulator=0;
  pathTracker.reset();siteDwellStart=null;inspectedSites.clear();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
- radio.reset();lastRadio=-1;flightLog=[];lastLog=lastUi=lastTrace=0;
+ radio.reset();lastRadio=-1;flightLog=[];debugSamples.length=0;lastDebugPlot=-1;lastLog=lastUi=lastTrace=0;
  tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  slam.reset();slamLog.length=0;lastScan=-1;previousYaw=null;lastObservableTime=0;
  missionCitySeed=seed;ready=true;paused=false;status('PHYSICS ONLINE');controller();updateUI();
