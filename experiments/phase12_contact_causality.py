@@ -30,14 +30,20 @@ def main():
              controller_mode="legacy",localization_mode="lidar_imu3d_hybrid",
              dynamic_replanning=False,localization_drift_m_sqrt_s=.03,
              localization_noise_sigma_m=.02,localization_seed=seed+71,
-             lidar_blackout_window=(45.,75.),**kwargs)
+             lidar_blackout_window=(45.,75.),online_risk_monitor=True,**kwargs)
         result[policy]={
            "safe":bool(f["completed"] and f["contact_samples"]==0 and f["min_clearance_m"]>=.25),
            "completed":f["completed"],"min_clearance_m":f["min_clearance_m"],
            "contacts":f["contact_samples"],"whole_flight_ate_rmse_m":f["navigation_ate_rmse_m"],
            "first_contact":f["first_contact"],
            "first_clearance_violation":f["first_clearance_violation"],
-           "reference_started":f["reference_started"]}
+           "reference_started":f["reference_started"],
+           "risk_alarm_first":f["first_risk_alarm"],
+           "risk_alarm_count":f["risk_alarm_count"],
+           "risk_monitor_checks":f["risk_monitor_checks"],
+           "lead_time_s":(round(f["first_contact"]["t_s"]-f["first_risk_alarm"]["t_s"],3)
+               if f["first_contact"] is not None and
+                  f["first_risk_alarm"] is not None else None)}
         print(policy,json.dumps(result[policy]),flush=True)
     (root/"summary.json").write_text(json.dumps(result,indent=2)+"\n")
 if __name__=="__main__":
