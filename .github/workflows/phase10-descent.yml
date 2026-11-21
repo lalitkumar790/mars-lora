@@ -1,0 +1,32 @@
+name: Phase 10 terminal descent tracking validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mujoco_sim/validate_mission.py'
+      - 'experiments/phase10_descent_slew.py'
+      - '.github/workflows/phase10-descent.yml'
+  push:
+    paths:
+      - 'mujoco_sim/validate_mission.py'
+      - 'experiments/phase10_descent_slew.py'
+      - '.github/workflows/phase10-descent.yml'
+permissions:
+  contents: read
+jobs:
+  matched-development:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_replan_envelope.py' -v
+      - run: python -m pip install mujoco==3.3.2
+      - run: python -m experiments.phase10_descent_slew --output results/phase10_descent_slew_dev
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: phase10-native-descent-ablation
+          path: results/phase10_descent_slew_dev/*
