@@ -13,7 +13,7 @@ def evaluate(routes_file,out_dir,wind_levels=(0.,.25,.5,1.,1.5)):
     paths=json.loads(Path(routes_file).read_text())
     directory=Path(out_dir);directory.mkdir(parents=True,exist_ok=True)
     results=[]
-    for mode in ("legacy","high_authority"):
+    for mode in ("legacy","high_authority","integral_guard"):
         for airframe in ("heavy","crazyflie"):
             for route in ("shortest","rf_aware"):
                 for wind in wind_levels:
@@ -38,14 +38,15 @@ def evaluate(routes_file,out_dir,wind_levels=(0.,.25,.5,1.,1.5)):
         "scenarios":len(results),
         "passed":sum(x["passed"] for x in results),
         "passed_by_controller":{mode:sum(x["passed"] for x in results if x["controller_mode"]==mode)
-                                for mode in ("legacy","high_authority")},
+                                for mode in ("legacy","high_authority","integral_guard")},
         "failed":[x for x in results if not x["passed"]],
         "wind_levels":list(wind_levels),
         "scope":"Deterministic sinusoidal disturbance force amplitudes, not real wind speeds",
         "limitations":[
             "No randomized aerodynamic turbulence or different obstacle layouts",
             "Wind amplitude is a force-proxy parameter, not m/s",
-            "The higher-authority gains are exploratory, not tuned on held-out wind distributions",
+            "The high-authority and integral_guard gains are exploratory, not tuned on held-out wind distributions",
+            "The full urban city colliders are included in the clearance measurement",
             "One trial per airframe/route/wind; no uncertainty intervals",
             "Planner precomputes geometry before wind; controller is not retuned"
         ]
