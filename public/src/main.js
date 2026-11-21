@@ -115,6 +115,7 @@ let airframe='heavy', mjMass=1.325, armX=.14,armY=.18, momentScale=1, modelThrus
 let visualInitialized=false;
 const pathTracker=new WaypointTracker();let pathError=0,speedReference=0;
 let currentPlan=null,previousUrbanGoal=null,urbanMissionCounter=0,missionCitySeed=ACTIVE_CITY_SEED;
+let lastHorizontalScan=null;
 let sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};let hazard={blocked:false,distance:Infinity};let obstacleHoldTime=0;
 let mujoco,model,data,ready=false,paused=false,follow=true,mission=false,waypointIndex=0,flightMode='Standby',lastUi=0,lastLog=0,lastTrace=0,desired=[0,0,.5],lastFrame=performance.now(),accumulator=0;
 let wind=.25,missionSpeed=1.5,flightLog=[];
@@ -157,7 +158,7 @@ function regenerateScenario(seed){
  mujoco.mj_forward(model,data);
  rotorState=Array(4).fill(mjMass*9.81/4);
  desired=[0,0,.5];accumulator=0;
- pathTracker.reset();hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
+ pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};sensedObstacles={nearest:Infinity,forward:Infinity,valid:0};
  radio.reset();lastRadio=-1;flightLog=[];lastLog=lastUi=lastTrace=0;
  tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  slam.reset();slamLog.length=0;lastScan=-1;previousYaw=null;lastObservableTime=0;
@@ -189,6 +190,10 @@ function controller(){
  }
  const target=waypointPositions[waypointIndex];
  const guidance=pathTracker.update(waypointIndex,waypointPositions,[nx,ny],missionSpeed);
+ // Scan a sector centered on the actual travel bearing, not blindly on
+ // the drone body X axis: the city route can face any compass direction.
+ const bearing=Math.atan2(target[1]-ny,target[0]-nx)-yaw;
+ hazard=lastHorizontalScan?scanHazard(lastHorizontalScan,bearing,1.25):{blocked:false,distance:Infinity};
  const rising=target[2]>=3.8 && pos[2]<target[2]-.35;
  // Continuous path targeting: project onto path segment, look ahead,
  // and slow down as the segment end approaches (rather than chase points).
@@ -200,7 +205,7 @@ function controller(){
  // Rangefinder-only collision supervisor: forward sector blocks movement
  // in the direction of the mission. Safety check on MuJoCo truth remains
  // a separate research oracle and is not fed to guidance.
- if(hazard.blocked && pos[2]>1.6 && !rising){
+ if(hazard.blocked && pos[2]>1.6 && !rising && Math.hypot(target[0]-nx,target[1]-ny)>.7){
    mission=false;
    desired=[nx,ny,pos[2]];
    obstacleHoldTime=data.time;
@@ -404,8 +409,8 @@ function frame(now){
     const p=data.qpos,v=data.qvel;
     const trueYaw=yawOfQuaternion(Array.from(p.slice(3,7)));
     const scan=nativeScan(data);
+    lastHorizontalScan=scan;
     sensedObstacles=obstacleScan(data);
-    hazard=scanHazard(scan,0,1.65);
     if(scan.valid>=3)lastObservableTime=data.time;
     // A noisy body-frame velocity/gyro sensor proxy. This intentionally
     // injects bias and does not expose ground-truth position to the estimator.
@@ -525,7 +530,7 @@ on('cityCamera',()=>{
  follow=false;camera.position.set(52,-65,57);orbit.target.set(0,0,8);orbit.update();
  report('City overview: inspecting the physically collidable urban canyon. Use OrbitControls to zoom into streets.');
 });
-on('reset',()=>{if(!ready)return;pathTracker.reset();hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;currentPlan=null;desired=[0,0,.5];waypointIndex=0;flightLog=[];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
+on('reset',()=>{if(!ready)return;pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};mujoco.mj_resetData(model,data);mujoco.mj_forward(model,data);rotorState=Array(4).fill(mjMass*9.81/4);paused=false;accumulator=0;mission=false;currentPlan=null;desired=[0,0,.5];waypointIndex=0;flightLog=[];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;lastObservableTime=0;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}lastLog=lastUi=lastTrace=0;$('pause').textContent='Ⅱ Pause';setMode('Reset / standby');status('PHYSICS ONLINE');updateUI();});
 document.querySelectorAll('[data-move]').forEach(button=>button.addEventListener('click',()=>{
  const map={'x-':[0,-1],'x+':[0,1],'y-':[1,-1],'y+':[1,1],'z-':[2,-.4],'z+':[2,.4]};
  setTarget(...map[button.dataset.move]);
@@ -587,7 +592,7 @@ async function initialize(){
 }
 $('airframe').addEventListener('change',async e=>{
  if(!mujoco)return;
- paused=true;ready=false;airframe=e.target.value;pathTracker.reset();hazard={blocked:false,distance:Infinity};
+ paused=true;ready=false;airframe=e.target.value;pathTracker.reset();lastHorizontalScan=null;hazard={blocked:false,distance:Infinity};
  mission=false;currentPlan=null;flightLog=[];rotorState=[0,0,0,0];slamLog.length=0;slam.reset();previousYaw=null;lastScan=-1;debugSamples.length=0;lastDebugPlot=-1;radio.reset();lastRadio=-1;tracePoints.length=0;if(traceLine){scene.remove(traceLine);traceLine.geometry.dispose();traceLine=null;}
  model=null;data=null;lastLog=lastUi=lastTrace=0;accumulator=0;
  status('RECOMPILING AIRFRAME','#f0b764');
