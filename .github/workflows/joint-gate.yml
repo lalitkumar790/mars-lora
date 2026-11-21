@@ -1,0 +1,49 @@
+name: Experimental ex-ante joint route SF audit
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'mars_lora/deadline_gate.py'
+      - 'experiments/joint_gate_audit.py'
+      - 'tests/test_joint_gate.py'
+      - '.github/workflows/joint-gate.yml'
+permissions:
+  contents: write
+concurrency:
+  group: mars-lora-joint-gate
+  cancel-in-progress: true
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Unit-test outcome-blind route and SF gate
+        run: python -m unittest tests.test_joint_gate -v
+      - name: Replay jointly chosen route and spreading factor on real MuJoCo logs
+        run: python -m experiments.joint_gate_audit --seeds 20
+      - name: Publish all outcomes including negative trials
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          tar -czf /tmp/joint-gate-results.tgz results/joint_gate
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git reset --hard origin/main
+            tar -xzf /tmp/joint-gate-results.tgz
+            git add results/joint_gate
+            if git diff --cached --quiet; then exit 0; fi
+            git commit -m 'results: ex-ante route and actual SF joint packet replay [skip ci]'
+            if git push origin HEAD:main; then exit 0; fi
+            sleep $((attempt*2))
+          done
+          exit 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: joint-route-sf-exploratory-results
+          path: results/joint_gate/*
