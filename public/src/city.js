@@ -74,7 +74,7 @@ export function addCityToScene(scene,buildings=CITY_BUILDINGS){
    matrix.position.set(axis==='x'?0:coord*CITY_SPACING+CITY_SPACING/2,axis==='x'?coord*12.2+6.1:0,.012);
    matrix.rotation.set(0,0,0);matrix.scale.set(axis==='x'?185:8,axis==='x'?8:185,1);matrix.updateMatrix();
    roads.setMatrixAt(i,matrix.matrix);
-   for(let d=-85;d<=85;d+=7stripesData.push([axis,d,coord*12.2+6.1]);
+   for(let d=-85;d<=85;d+=7)stripesData.push([axis,d,coord*12.2+6.1]);
  }
  roads.instanceMatrix.needsUpdate=true;group.add(roads);
  // Landscaped parcels: parks, plazas, walkways and lightweight vegetation.
