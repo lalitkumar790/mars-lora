@@ -41,14 +41,14 @@ export function withCity(xml,buildings=CITY_BUILDINGS){
 export function addCityToScene(scene,buildings=CITY_BUILDINGS){
  const group=new THREE.Group(),matrix=new THREE.Object3D();
  const buildingMaterial=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.8});
- const buildings=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),buildingMaterial,buildings.length);
+ const buildingMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),buildingMaterial,buildings.length);
  const roofs=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshStandardMaterial({color:0x263949}),buildings.length);
  const windowMatrices=[];
  for(let i=0;i<buildings.length;i++){
   const b=buildings[i];
   matrix.position.set(b.x,b.y,b.z);matrix.scale.set(2*b.hx,2*b.hy,2*b.hz);matrix.rotation.set(0,0,0);matrix.updateMatrix();
-  buildings.setMatrixAt(i,matrix.matrix);
-  buildings.setColorAt(i,new THREE.Color().setHSL(.57+b.kind*.05,.13,.3+b.kind*.16));
+  buildingMesh.setMatrixAt(i,matrix.matrix);
+  buildingMesh.setColorAt(i,new THREE.Color().setHSL(.57+b.kind*.05,.13,.3+b.kind*.16));
   matrix.position.set(b.x,b.y,b.z+b.hz+.07);matrix.scale.set(2*b.hx+.2,2*b.hy+.2,.15);matrix.updateMatrix();roofs.setMatrixAt(i,matrix.matrix);
   const floors=Math.min(12,Math.floor((2*b.hz)/2.5));
   for(let level=1;level<=floors;level++){
@@ -56,10 +56,10 @@ export function addCityToScene(scene,buildings=CITY_BUILDINGS){
       windowMatrices.push([b.x+slot*b.hx*.68,b.y+side*(b.hy+.006),level*2.4,side]);
   }
  }
- buildings.instanceMatrix.needsUpdate=true;
- if(buildings.instanceColor)buildings.instanceColor.needsUpdate=true;
- buildings.castShadow=false;buildings.receiveShadow=true;
- roofs.instanceMatrix.needsUpdate=true;group.add(buildings,roofs);
+ buildingMesh.instanceMatrix.needsUpdate=true;
+ if(buildingMesh.instanceColor)buildingMesh.instanceColor.needsUpdate=true;
+ buildingMesh.castShadow=false;buildingMesh.receiveShadow=true;
+ roofs.instanceMatrix.needsUpdate=true;group.add(buildingMesh,roofs);
  const win=new THREE.InstancedMesh(new THREE.PlaneGeometry(.86,.94),
    new THREE.MeshBasicMaterial({color:0x93b9c6,transparent:true,opacity:.35,side:THREE.DoubleSide}),windowMatrices.length);
  windowMatrices.forEach(([x,y,z,side],i)=>{
@@ -71,10 +71,10 @@ export function addCityToScene(scene,buildings=CITY_BUILDINGS){
  const stripesData=[];
  for(let coord=-4;coord<=4;coord++)for(const axis of ['x','y']){
    const i=(coord+4)*2+(axis==='x'?0:1);
-   matrix.position.set(axis==='x'?0:coord*CITY_SPACING+CITY_SPACING/2,axis==='x'?coord*12.2+6.1:0,.012);
+   matrix.position.set(axis==='x'?0:coord*CITY_SPACING+CITY_SPACING/2,axis==='x'?coord*CITY_SPACING+CITY_SPACING/2:0,.012);
    matrix.rotation.set(0,0,0);matrix.scale.set(axis==='x'?185:8,axis==='x'?8:185,1);matrix.updateMatrix();
    roads.setMatrixAt(i,matrix.matrix);
-   for(let d=-85;d<=85;d+=7)stripesData.push([axis,d,coord*12.2+6.1]);
+   for(let d=-85;d<=85;d+=7)stripesData.push([axis,d,coord*CITY_SPACING+CITY_SPACING/2]);
  }
  roads.instanceMatrix.needsUpdate=true;group.add(roads);
  // Landscaped parcels: parks, plazas, walkways and lightweight vegetation.
