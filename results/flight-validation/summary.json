@@ -8,6 +8,19 @@
     "navigation_max_error_m": 0.0,
     "eskf_shadow_enabled": false,
     "eskf15_shadow_enabled": false,
+    "pose6_shadow_enabled": false,
+    "pose6_observability_timeline": [],
+    "pose6_full_rank_scans": 0,
+    "pose6_partial_scans": 0,
+    "pose6_rank_histogram": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0
+    },
     "lidar_observable_scans": 0,
     "lidar_unobservable_scans": 0,
     "lidar_observability_rank_histogram": {
@@ -110,6 +123,19 @@
     "navigation_max_error_m": 0.0,
     "eskf_shadow_enabled": false,
     "eskf15_shadow_enabled": false,
+    "pose6_shadow_enabled": false,
+    "pose6_observability_timeline": [],
+    "pose6_full_rank_scans": 0,
+    "pose6_partial_scans": 0,
+    "pose6_rank_histogram": {
+      "0": 0,
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0
+    },
     "lidar_observable_scans": 0,
     "lidar_unobservable_scans": 0,
     "lidar_observability_rank_histogram": {
