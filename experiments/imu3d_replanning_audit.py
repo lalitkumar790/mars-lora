@@ -17,9 +17,10 @@ CITIES=(91311,20483)
 MODES=(("lidar_match",False),("lidar_imu3d",True))
 ROUTES=("shortest","rf_aware")
 DRIFT=.03
-def evaluate(output="results/imu3d_replanning"):
+def evaluate(output="results/imu3d_replanning",hybrid=False):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     rows=[];planner_errors=[]
+    modes=(("lidar_match",False),("lidar_imu3d_hybrid",True)) if hybrid else MODES
     for seed in CITIES:
         solids=INDUSTRIAL+tuple(city(seed))
         try:
@@ -29,14 +30,15 @@ def evaluate(output="results/imu3d_replanning"):
             planner_errors.append(dict(city_seed=seed,error=str(error)))
             print("NO PLAN",seed,str(error),flush=True);continue
         for route,points in routes.items():
-            for mode,replanning in MODES:
+            for mode,replanning in modes:
                 result=run("heavy",duration=240,wind=.25,
                     wind_phase=(seed%19)*.12,city_seed=seed,
                     controller_mode="legacy",route=points,
                     localization_mode=mode,dynamic_replanning=replanning,
                     localization_drift_m_sqrt_s=DRIFT,
                     localization_noise_sigma_m=.02,
-                    localization_seed=seed+71)
+                    localization_seed=seed+71,
+                    lidar_blackout_window=((45.,75.) if hybrid else None))
                 result.update(route=route,
                     safe=bool(result["completed"] and result["contact_samples"]==0
                               and result["min_clearance_m"]>=.25))
@@ -62,7 +64,8 @@ def evaluate(output="results/imu3d_replanning"):
     (out/"summary.json").write_text(json.dumps({
         "phase":"Experimental 3D range plus inertial state estimation, uncertainty-based map replanning",
         "city_seeds":list(CITIES),"physical_runs":len(rows),
-        "expected_runs":len(CITIES)*len(ROUTES)*len(MODES),
+        "expected_runs":len(CITIES)*len(ROUTES)*len(modes),
+        "hybrid_fusion_and_shared_blackout":hybrid,
         "planner_errors":planner_errors,"results":summary,
         "caution":[
           "No true simultaneous mapping: exact static prior geometry available",
@@ -78,6 +81,7 @@ def evaluate(output="results/imu3d_replanning"):
 if __name__=="__main__":
     import argparse
     parser=argparse.ArgumentParser()
-    parser.add_argument("--output",default="results/imu3d_replanning_v2")
+    parser.add_argument("--output",default="results/imu3d_replanning_v3")
+    parser.add_argument("--hybrid",action="store_true")
     args=parser.parse_args()
-    evaluate(output=args.output)
+    evaluate(output=args.output,hybrid=args.hybrid)
