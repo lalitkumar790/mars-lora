@@ -66,8 +66,8 @@ def assess_scan_observability(position_xyz,yaw,ranges,solids,*,
     eig=np.maximum(0.,np.linalg.eigvalsh(info))
     rank=int(np.sum(eig>max(1e-8,1e-8*eig[-1])))
     condition=float(eig[-1]/eig[0]) if eig[0]>1e-10 else float("inf")
-    informative=(rank==3 and eig[0]>=min_eigenvalue and
-                 condition<=max_condition)
+    informative=bool(rank==3 and eig[0]>=min_eigenvalue and
+                     condition<=max_condition)
     return ScanObservability(int(valid.size),len(indices),rank,
                              condition,float(eig[0]),float(eig[-1]),rms,
                              informative)
