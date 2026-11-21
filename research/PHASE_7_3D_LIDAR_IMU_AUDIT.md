@@ -34,6 +34,15 @@ These are development scenarios after inspecting the failed V1–V4 results, not
 
 **Decision:** retain the 2D map-aided reference mode; reject promotion of the current 3D LiDAR/IMU hybrid and dynamic replan controller. The next research design must predict vehicle tracking envelopes from actual dynamics (including braking, momentum, wind, rotor lag and sensor-tail uncertainty), validate every spliced segment, and have safe-hold/relocalization protocols when observations become insufficient. Freeze controller gains before running NEW cities and adversarial scene distributions. No real flight or calibrated sensor claim is justified.
 
+## Independent-city V5 holdout — frozen-policy result
+
+After freezing the V5 algorithm, a separate GitHub workflow tested city seeds **73571** and **18931** without modifying fusion/replanning parameters or choosing a new favorable route. The output is in results/imu3d_independent_cities.
+
+- Seed 73571: the inflated-clearance A* planner rejected the map because the start or goal was unsafe. **No flight was executed**; it is a planning-feasibility failure, not a collision-free mission success.
+- Seed 18931: both shortest-safe and RF-aware routes could be executed. The 2D map-aided baseline was physically safe **2/2**. The 3D fusion candidate without replanning was safe **0/2**, and with dynamic replanning was safe **0/2**, despite destination completion. The hybrid breached minimum clearance; one case had no reported contact but still failed the 0.25-m clearance threshold.
+- The study therefore has **six executed flights out of twelve planned cases** and one unresolved city-level planning rejection. It must NOT be summarized as 6/12 generalization performance because six trials were never executed. Conditional successful-flight comparisons have only two scenes per policy.
+- These are independent procedural city seeds from the same generator, not a change to real photogrammetry, true 3D SLAM environments or outdoor hardware calibration. The data falsify generalizable safety superiority for this 3D hybrid; no controller promotion.
+
 ## Scientific limitations and next gates
 
 1. The system has not implemented unknown-map 3D SLAM, IMU bias estimation with a consistent covariance, graph optimization/loop closure or full sensor frame calibration.
