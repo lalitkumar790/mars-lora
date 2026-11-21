@@ -50,7 +50,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add results/rf_navigation paper/figures/rf_aware_routes.pdf paper/figures/rf_aware_routes.png paper/figures/rf_aware_tradeoff.pdf paper/figures/rf_aware_tradeoff.png paper/paper.pdf
+          git add results/rf_navigation paper/figures/rf_aware_routes.pdf paper/figures/rf_aware_routes.png paper/figures/rf_aware_tradeoff.pdf paper/figures/rf_aware_tradeoff.png
           if ! git diff --cached --quiet; then
             git commit -m 'results: MuJoCo-executed A* RF-aware navigation with paired LoRa measurements [skip ci]'
             for attempt in 1 2 3 4 5; do
