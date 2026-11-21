@@ -24,11 +24,9 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: public/package-lock.json
       - run: node --test tests/slam-growth.test.mjs
         working-directory: public
-      - run: npm ci
+      - run: npm install --no-audit --no-fund
         working-directory: public
       - run: npm run build
         working-directory: public
