@@ -193,7 +193,7 @@ function controller(){
  // Scan a sector centered on the actual travel bearing, not blindly on
  // the drone body X axis: the city route can face any compass direction.
  const bearing=Math.atan2(target[1]-ny,target[0]-nx)-yaw;
- hazard=lastHorizontalScan?scanHazard(lastHorizontalScan,bearing,1.25):{blocked:false,distance:Infinity};
+ hazard=lastHorizontalScan?scanHazard(lastHorizontalScan,bearing,.85):{blocked:false,distance:Infinity};
  const rising=target[2]>=3.8 && pos[2]<target[2]-.35;
  // Continuous path targeting: project onto path segment, look ahead,
  // and slow down as the segment end approaches (rather than chase points).
