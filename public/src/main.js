@@ -598,6 +598,12 @@ window.addEventListener('keydown',event=>{
 for(const [id,fn] of [['wind',v=>wind=v],['speed',v=>missionSpeed=v]]){
  $(id).addEventListener('input',e=>{fn(Number(e.target.value));$(id+'val').textContent=Number(e.target.value).toFixed(2)+(id==='wind'?' N':' m/s');});
 }
+on('slamView',()=>{
+ slamView=slamView==='full'?'follow':'full';
+ $('slamView').textContent=slamView==='full'?'⌾ Map view: Full explored area':'⌖ Map view: Follow drone';
+ $('slamView').setAttribute('aria-pressed',String(slamView==='follow'));
+ drawSLAMMap();
+});
 on('resetSlam',()=>{slam.reset();slamLog.length=0;previousYaw=null;lastScan=-1;lastObservableTime=0;report('GPS-denied mapping map and pose estimate reset.');});
 $('navSource').addEventListener('change',()=>{report('Horizontal navigation input: '+($('navSource').value==='slam'?'GPS-denied scan-matched odometry':'simulator ground truth'));});
 on('alert',()=>{if(!ready)return;radio.sendAlert(data.time);report('Injected 3-second critical radio alert');});
