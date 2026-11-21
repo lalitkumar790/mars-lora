@@ -17,11 +17,11 @@ CITIES=(91311,20483)
 MODES=(("lidar_match",False),("lidar_imu3d",True))
 ROUTES=("shortest","rf_aware")
 DRIFT=.03
-def evaluate(output="results/imu3d_replanning",hybrid=False):
+def evaluate(output="results/imu3d_replanning",hybrid=False,city_seeds=CITIES):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     rows=[];planner_errors=[]
     modes=(("lidar_match",False),("lidar_imu3d_hybrid",False),("lidar_imu3d_hybrid",True)) if hybrid else MODES
-    for seed in CITIES:
+    for seed in city_seeds:
         solids=INDUSTRIAL+tuple(city(seed))
         try:
             routes={name:plan(name,solids=solids,localization_sigma_m=.10).points
@@ -65,8 +65,8 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
            total_lidar_corrections=sum(x["lidar_matches_accepted"] for x in xs)))
     (out/"summary.json").write_text(json.dumps({
         "phase":"Experimental 3D range plus inertial state estimation, uncertainty-based map replanning",
-        "city_seeds":list(CITIES),"physical_runs":len(rows),
-        "expected_runs":len(CITIES)*len(ROUTES)*len(modes),
+        "city_seeds":list(city_seeds),"physical_runs":len(rows),
+        "expected_runs":len(city_seeds)*len(ROUTES)*len(modes),
         "hybrid_fusion_and_shared_blackout":hybrid,
         "planner_errors":planner_errors,"results":summary,
         "caution":[
@@ -85,5 +85,8 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("--output",default="results/imu3d_replanning_v5")
     parser.add_argument("--hybrid",action="store_true")
+    parser.add_argument("--city-seeds",type=int,nargs="+",default=list(CITIES))
     args=parser.parse_args()
-    evaluate(output=args.output,hybrid=args.hybrid)
+    if len(set(args.city_seeds))!=len(args.city_seeds):
+        parser.error("City seeds must be distinct")
+    evaluate(output=args.output,hybrid=args.hybrid,city_seeds=tuple(args.city_seeds))
