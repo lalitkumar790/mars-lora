@@ -54,3 +54,23 @@ For **new development city 62731**, both shortest and RF-aware map-known staged 
 **Next preflight experiment:** `experiments/phase17b_preflight.py` records per-constraint reject counts over known development seeds 91311/48221/63047 and new development 62731; no threshold relaxation or independent confirmation is claimed. Do not move to a new frozen holdout until a policy achieves feasible, independently measured improvements in *both* perception and safe flight on separate development cases.
 
 **Hard stop:** The new candidate does not use the body-fixed scan in the online estimator and changes no flight controller. Real adaptive LiDAR trajectory planning, LoRa timeliness and whole-mission energy remain unproven. Prior Phase 11 independent-city safety gate FAILED 10/16.
+
+## Phase 17b/17c development diagnosis and selected-positive case
+
+Preflight [run 44939074725](https://github.com/lalitkumar790/mars-lora/actions/runs/44939074725) evaluated 8 **development** city-route combinations (91311, 48221, 63047, 62731 × shortest/RF-aware), with all route rejects logged. Exactly **one of eight** generated a viewpoint insertion passing the predeclared static clearance, added distance, reference feasibility and nominal rank-gain checks: seed **48221 shortest**, versus two preflight failures in city 62731. The one accepted candidate raised the nominal rank-six informative fraction from **0.153846 to 0.230769**, at **+1.4164m** geometric route length and **+2.6558s** reference duration.
+
+The **post-selected development** matched native MuJoCo experiment [run 44939194532](https://github.com/lalitkumar790/mars-lora/actions/runs/44939194532) compared that exact 48221 shortest route using the original hybrid yaw-only estimator:
+
+| Metric | Unchanged baseline | Added oracle viewpoint |
+|---|---:|---:|
+| Fully safe (completion/no contacts, clearance >= .25m) | yes | yes |
+| MuJoCo contact samples | 0 | 0 |
+| Minimum obstacle clearance (m) | .926 | .928 |
+| Localization RMSE (m) | .1823 | .1785 |
+| Elapsed flight (s) | 124.96 | 127.62 |
+| Route length (m) | 66.0000 | 67.4164 |
+| Nominal informative-scan fraction | .153846 | .230769 |
+
+The nominal fraction increased by **7.69 percentage points** (one additional rank-six sample if sample denominators align), but the executed legacy position RMSE decreased by only **0.0038m**. With one *deliberately selected* known development pair this is **not evidence of statistical advantage, true scan-information gain, LoRa deadline success, or generalizable safety**. Both safe trajectories pass and the added flight duration is a real cost. The drone still receives the original yaw-only scan, not the hypothetical body-fixed scan used to rank route candidates. The reason for the 3.8mm RMSE difference is not established and could be numerical/trajectory-related rather than improved geometric sensing.
+
+**Research decision:** Keep the prototype as a *possible hypothesis generator*, not an accepted autonomy algorithm. Next evaluate on additional non-selected development geometries under independently seeded winds/IMU errors; stop if the fraction of actual useful corrections and **precontact** position error do not improve meaningfully. No new frozen holdout before jointly checking mission safety, deadline, RF reliability and propulsion power under the same physically executed traces.
