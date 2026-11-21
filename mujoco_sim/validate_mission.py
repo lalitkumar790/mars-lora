@@ -154,6 +154,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     body15=None;body_imu_sensor=None
     body15_errsq=0.;body15_precontact_sq=0.;body15_samples=0.;body15_precontact_samples=0
     body15_coverage99=0;body15_lidar3d_accept=body15_lidar3d_reject=0
+    body15_first_error_1m=None;body15_first_error_5m=None
+    body15_precontact_attitude_squared=0.;body15_precontact_attitude_count=0
     body15_planar_accept=body15_planar_reject=0;body15_max_error=0.
     if eskf15_shadow:
         from mars_lora.body_imu_eskf15 import InertialESKF15
@@ -345,10 +347,25 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 body15_samples+=1
                 body15_errsq+=err15*err15
                 body15_max_error=max(body15_max_error,err15)
+                if err15>=1. and body15_first_error_1m is None:
+                    body15_first_error_1m={"t_s":round(float(t),3),
+                        "error_m":round(float(err15),3),
+                        "sigma_position_rms_m":round(float(body15.sigma_position_rms_m),3)}
+                if err15>=5. and body15_first_error_5m is None:
+                    body15_first_error_5m={"t_s":round(float(t),3),
+                        "error_m":round(float(err15),3),
+                        "sigma_position_rms_m":round(float(body15.sigma_position_rms_m),3)}
                 body15_coverage99+=int(body15.position_nees(p[:3])<=11.345)
                 if first_contact is None:
                     body15_precontact_samples+=1
                     body15_precontact_sq+=err15*err15
+                    from mars_lora.body_imu_eskf15 import quat_body_delta
+                    attitude_delta=quat_body_delta(
+                        tuple(float(a) for a in body15.quat_wb),
+                        tuple(float(a) for a in p[3:7]))
+                    angle=math.sqrt(sum(float(a)*float(a) for a in attitude_delta))
+                    body15_precontact_attitude_squared+=angle*angle
+                    body15_precontact_attitude_count+=1
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
@@ -648,6 +665,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                "estimated_velocity_xyz":[round(float(a),3) for a in nav_velocity],
                "actual_velocity_xyz":[round(float(a),3) for a in data.qvel[:3]],
                "localization_error_m":round(float(math.dist(nav_xyz,data.qpos[:3])),3),
+               "body15_attitude_error_deg":(
+                   round(math.degrees(float(math.sqrt(sum(a*a for a in quat_body_delta(
+                       tuple(body15.quat_wb),tuple(data.qpos[3:7])))))),3)
+                   if body15 is not None else None),
+               "body15_accel_bias_estimate":(
+                   [round(float(a),5) for a in body15.accel_bias] if body15 is not None else None),
+               "body15_gyro_bias_estimate":(
+                   [round(float(a),6) for a in body15.gyro_bias] if body15 is not None else None),
                "body15_position_error_m":(round(float(math.dist(body15.position,data.qpos[:3])),3)
                                             if body15 is not None else None),
                "body15_position_sigma_rms_m":(round(float(body15.sigma_position_rms_m),3)
@@ -684,6 +709,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 navigation_max_error_m=round(localization_max_error,4),
                 eskf_shadow_enabled=eskf_shadow,
                 eskf15_shadow_enabled=eskf15_shadow,
+                eskf15_error_1m_first=body15_first_error_1m,
+                eskf15_error_5m_first=body15_first_error_5m,
+                eskf15_precontact_attitude_rmse_deg=(
+                    round(math.degrees(math.sqrt(
+                        body15_precontact_attitude_squared/max(1,body15_precontact_attitude_count))),3)
+                    if body15 is not None else None),
                 eskf15_shadow_rmse_m=(round(math.sqrt(body15_errsq/max(1,body15_samples)),4)
                                       if body15 is not None else None),
                 eskf15_shadow_precontact_rmse_m=(
