@@ -23,7 +23,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button class="primary" id="takeoff">↑ Take off</button>
 <button id="land">↓ Land</button>
 <label class="field full" for="missionType" style="margin:0">Flight mission</label>
-<select id="missionType" class="full"><option value="inspection">High-altitude inspection (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest safe urban route</option><option value="astar_rf">3D A*: LoRa-aware safe urban route</option></select>
+<select id="missionType" class="full"><option value="inspection">Fixed inspection benchmark (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest-safe randomized urban route</option><option value="astar_rf" selected>3D A*: LoRa-aware randomized urban route</option></select>
 <button id="mission" class="primary full">▶ Generate NEW city + start selected mission</button>
 <p id="plannerStatus" class="full" style="margin:4px 0;color:#8bd6f0">Choose either urban A* mode. Each start generates a new city, destination and physical mission.</p>
 <button id="pause">Ⅱ Pause</button>
