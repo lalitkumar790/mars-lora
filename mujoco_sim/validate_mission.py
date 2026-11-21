@@ -13,7 +13,7 @@ import mujoco
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from mars_lora.urban_scene import add_city_mjcf
-from mars_lora.rf_astar import signed_clearance as full_city_clearance
+from mars_lora.rf_astar import SOLIDS, signed_clearance as full_city_clearance
 
 ROUTE=[(0,0,7),(2,0,7),(2,8,7),(-7,8,7),(-7,-7,7),(0,0,7),(0,0,2.5)]
 OBSTACLES=[
@@ -30,6 +30,35 @@ def signed_clearance(p,radius):
         dist=-min(-v for v in d) if all(v<=0 for v in d) else outside
         best=min(best,dist-radius)
     return best
+# Conservative spatial broadphase: retain every city/industrial solid that
+# could be <=3 m from a point in this XY grid tile. Exact 3D clearance is
+# calculated only for those candidate solids; values greater than 3 m are
+# intentionally capped at 3 m. This keeps 250-Hz physics audits tractable.
+CLEARANCE_CAP=3.
+CLEARANCE_CELL_M=6.
+def make_clearance_grid(solids=SOLIDS):
+    from collections import defaultdict
+    cells=defaultdict(list)
+    for solid in solids:
+        cx,cy,cz,hx,hy,hz=solid
+        extent=CLEARANCE_CAP+.5
+        xmin=math.floor((cx-hx-extent)/CLEARANCE_CELL_M)
+        xmax=math.floor((cx+hx+extent)/CLEARANCE_CELL_M)
+        ymin=math.floor((cy-hy-extent)/CLEARANCE_CELL_M)
+        ymax=math.floor((cy+hy+extent)/CLEARANCE_CELL_M)
+        for ix in range(xmin,xmax+1):
+            for iy in range(ymin,ymax+1):
+                cells[(ix,iy)].append(solid)
+    return dict(cells)
+
+CLEARANCE_GRID=make_clearance_grid()
+def fast_city_clearance(p,radius=0.):
+    from mars_lora.rf_astar import signed_clearance
+    key=(math.floor(p[0]/CLEARANCE_CELL_M),math.floor(p[1]/CLEARANCE_CELL_M))
+    neighbors=CLEARANCE_GRID.get(key,())
+    if not neighbors:return CLEARANCE_CAP
+    return min(CLEARANCE_CAP,signed_clearance(p,neighbors)-radius)
+
 def clamp(x,a,b):
     return max(a,min(b,x))
 def quat_to_rpy(q):
@@ -96,7 +125,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 # but integral state is reset at waypoint handoffs and
                 # suspended near walls to avoid windup into obstacles.
                 gain,damping,accel_limit,tilt_limit=1.45,1.95,2.25,.23
-                clearance_now=full_city_clearance(p[:3])-(.08 if airframe=="crazyflie" else .32)
+                clearance_now=fast_city_clearance(p[:3],.08 if airframe=='crazyflie' else .32)
                 safe_to_integrate=clearance_now>1.5 and math.hypot(v[0],v[1])<2.5
                 if safe_to_integrate:
                     x_integral=clamp(x_integral+.02*(desired[0]-p[0]),-.75,.75)
@@ -138,7 +167,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         # Check every physics step, not just the downsampled CSV rate.
         # The prior audit only checked the industrial fixtures, ignoring
         # city buildings present in the actual MuJoCo collision model.
-        clearance=full_city_clearance(data.qpos[:3])-(.08 if airframe=='crazyflie' else .32)
+        clearance=fast_city_clearance(data.qpos[:3],.08 if airframe=='crazyflie' else .32)
         minimum=min(minimum,clearance)
         contacts+=int(data.ncon>0)
         if k%25==0:
