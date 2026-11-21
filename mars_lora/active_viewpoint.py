@@ -29,6 +29,8 @@ class ViewpointPlan:
     candidate_count:int
     rejected_count:int
     outcome:str
+    rejection_reasons:dict[str,int]
+    best_rejected_score:float|None
 
 
 def _route_length(points):
@@ -89,6 +91,8 @@ def choose_observable_detour(points,solids,*,radius_m=.32,
     middle.sort(key=lambda x:-x[1])
     best=None
     attempts=rejects=0
+    reasons={'distance_limit':0,'clearance':0,'reference_deadline_or_feasibility':0,'insufficient_observability_gain':0}
+    best_rejected_score=None
     for i,_ in middle[:3]:
         a,b=points[i:i+2]
         dx=b[0]-a[0];dy=b[1]-a[1]
@@ -101,17 +105,19 @@ def choose_observable_detour(points,solids,*,radius_m=.32,
             route=points[:i+1]+(candidate,)+points[i+1:]
             attempts+=1
             if _route_length(route)-base_length>max_extra_length_m:
-                rejects+=1;continue
+                rejects+=1;reasons['distance_limit']+=1;continue
             if path_clearance(route,radius=radius_m,solids=solids)<(
                     3*sigma_m+clearance_margin_m):
-                rejects+=1;continue
+                rejects+=1;reasons['clearance']+=1;continue
             try:
                 ref=reference(route)
             except (ValueError,RuntimeError):
-                rejects+=1;continue
+                rejects+=1;reasons['reference_deadline_or_feasibility']+=1;continue
             score=_score_route(route,solids)
             if score<base_score+minimum_gain:
-                rejects+=1;continue
+                best_rejected_score=(score if best_rejected_score is None else
+                                     max(score,best_rejected_score))
+                rejects+=1;reasons['insufficient_observability_gain']+=1;continue
             # Enforce positive measured gain, prefer short/durable detours.
             utility=(score-base_score)-.002*(_route_length(route)-base_length)
             if best is None or utility>best[0]:
@@ -120,9 +126,9 @@ def choose_observable_detour(points,solids,*,radius_m=.32,
         return ViewpointPlan(points,base_score,base_score,base_length,
                              base_length,base_ref.duration_s,
                              base_ref.duration_s,None,attempts,rejects,
-                             "baseline_no_verified_gain")
+                             "baseline_no_verified_gain",reasons,best_rejected_score)
     _,chosen,score,ref,inserted=best
     return ViewpointPlan(chosen,base_score,score,base_length,
                          _route_length(chosen),base_ref.duration_s,
                          ref.duration_s,inserted,attempts,rejects,
-                         "map_oracle_detour_candidate")
+                         "map_oracle_detour_candidate",reasons,best_rejected_score)
