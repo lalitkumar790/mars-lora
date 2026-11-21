@@ -1,0 +1,5 @@
+drift_m_sqrt_s,mode,cases,safe,mean_ate_m,accepted_scan_matches,rejected_scan_matches
+0.03,drift,8,7,0.3694625,0,0
+0.03,lidar_match,8,8,0.099075,225,270
+0.06,drift,8,3,1.0391375,0,0
+0.06,lidar_match,8,8,0.122,316,182
