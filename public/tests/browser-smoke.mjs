@@ -41,9 +41,17 @@ try {
  if (!(await page.locator('#status').innerText()).includes('PHYSICS ONLINE')) throw new Error('Reset failed');
  await page.locator('#missionType').selectOption('astar_rf');
  await page.locator('#mission').click();
- await page.waitForFunction(() => document.querySelector('#plannerStats')?.textContent.startsWith('Computed'), null, {timeout:30000});
+ await page.waitForFunction(() => document.querySelector('#plannerStats')?.textContent.startsWith('NEW randomized'), null, {timeout:30000});
  const distance = parseFloat(await page.locator('#planDistance').innerText());
- if (!(distance>54 && distance<150)) throw new Error('Interactive RF A* route not computed correctly: '+distance);
+ if (!(distance>20 && distance<220)) throw new Error('Interactive RF A* route not computed correctly: '+distance);
+ const firstMission=await page.locator('#missionIdentity').innerText();
+ if (!(firstMission.includes('seed') && firstMission.includes('goal')))throw new Error('Randomized mission not initialized');
+ await page.locator('#mission').click();
+ await page.waitForFunction(() => document.querySelector('#missionIdentity')?.textContent.startsWith('Flight #2'), null, {timeout:30000});
+ const secondMission=await page.locator('#missionIdentity').innerText();
+ if (firstMission===secondMission)throw new Error('Second flight reused first mission and city seed');
+ if (!(await page.locator('#waypoints').innerText()).includes('Active waypoint'))throw new Error('Randomized A* mission not flying');
+
  if(errors.length)throw new Error('Browser errors: '+errors.join('\n'));
  console.log('PASS: MuJoCo in Chromium; takeoff altitude '+initial+'m -> '+altitude+'m; sim time '+time+'s; mission, pause, reset.');
 } catch(error) {
