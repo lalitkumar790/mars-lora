@@ -115,6 +115,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     map_replans=map_replan_failures=localization_lost_events=0
     first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
     stopping_envelope_rejections=0
+    accepted_replan_events=[];rejected_replan_events=[]
     last_replan_time=-100.
     replan_anchor_xy=None
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
@@ -277,9 +278,15 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         # the stopping-envelope splice, not launch origin.
                         replan_anchor_xy=tuple(nav_xyz[:2])
                     idx=0;map_replans+=1
+                    accepted_replan_events.append({"t_s":round(float(t),3),
+                        "estimated_xyz":[round(float(a),3) for a in nav_xyz],
+                        "uncertainty_sigma_m":round(float(inertial.sigma_m),3),
+                        "speed_m_s":round(math.sqrt(sum(a*a for a in nav_velocity)),3)})
                     target=waypoints[idx]
-                except (RuntimeError,ValueError,AssertionError):
+                except (RuntimeError,ValueError,AssertionError) as error:
                     map_replan_failures+=1
+                    rejected_replan_events.append({"t_s":round(float(t),3),
+                        "reason":str(error),"sigma_m":round(float(inertial.sigma_m),3)})
                 last_replan_time=t
             delta=[target[i]-nav_xyz[i] for i in range(3)]
             speed3=math.sqrt(sum(nav_velocity[i]**2 for i in range(3)))
@@ -451,6 +458,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 first_contact=first_contact,
                 first_clearance_violation=first_clearance_violation,
                 minimum_clearance_event=minimum_clearance_event,
+                accepted_replan_events=accepted_replan_events,
+                rejected_replan_events=rejected_replan_events,
                 route_waypoints=len(waypoints),end_position_xyz=[round(float(a),3) for a in data.qpos[:3]])
     if require_completion and (not result['completed'] or contacts>0 or minimum<.25):
         raise RuntimeError('Route failed native MuJoCo safety validation: '+str(result))
