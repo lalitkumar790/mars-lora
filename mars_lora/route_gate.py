@@ -32,8 +32,10 @@ def simulated_pilot(profile:dict,station:tuple,seed:int,position=PILOT_POSITION,
     uses profile parameters to generate those readings, as a test harness.
     """
     d=max(1.,math.dist(position,station))
+    blocked=(obstructed(position,station) if scene is None
+             else obstructed(position,station,scene))
     los_loss=(float(profile.get("obstruction_db",17.))+
-              float(profile.get("extra_nlos_loss_db",0.))) if obstructed(position,station) if scene is None else obstructed(position,station,scene) else 0.
+              float(profile.get("extra_nlos_loss_db",0.))) if blocked else 0.
     power=(14-31.2-10*float(profile.get("path_loss_exponent",4.))*math.log10(d)
            -los_loss+float(profile.get("rx_bias_db",0.))
            +spatial_shadow_field(position,seed,shadow_sigma_db))
