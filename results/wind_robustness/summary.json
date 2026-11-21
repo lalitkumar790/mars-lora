@@ -10,6 +10,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -33,6 +34,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -56,6 +58,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -79,6 +82,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -102,6 +106,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -125,6 +130,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -148,6 +154,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -171,6 +178,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "legacy",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -194,6 +202,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": true,
@@ -217,6 +226,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": true,
@@ -240,6 +250,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -263,6 +274,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -286,6 +298,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -309,6 +322,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "high_authority",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 0,
       "completed": false,
@@ -332,6 +346,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 964,
       "completed": true,
@@ -355,6 +370,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 1088,
       "completed": true,
@@ -378,6 +394,7 @@
     {
       "airframe": "heavy",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 331,
       "completed": true,
@@ -401,6 +418,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 440,
       "completed": true,
@@ -424,6 +442,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 661,
       "completed": true,
@@ -447,6 +466,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 20251,
       "completed": false,
@@ -470,6 +490,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 21527,
       "completed": false,
@@ -493,6 +514,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 20251,
       "completed": false,
@@ -516,6 +538,7 @@
     {
       "airframe": "crazyflie",
       "controller_mode": "integral_guard",
+      "city_seed": 37021,
       "wind_phase": 0.0,
       "safety_holds": 21527,
       "completed": false,
