@@ -113,6 +113,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_accel_bias=[imu_bias_rng.gauss(0.,.003) for _ in range(3)]
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
+    first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
     stopping_envelope_rejections=0
     last_replan_time=-100.
     replan_anchor_xy=None
@@ -395,7 +396,22 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         # The prior audit only checked the industrial fixtures, ignoring
         # city buildings present in the actual MuJoCo collision model.
         clearance=fast_city_clearance(data.qpos[:3],.08 if airframe=='crazyflie' else .32,grid=scene_grid)
+        if clearance<minimum:
+            minimum_clearance_event={"t_s":round(float(data.time),3),
+              "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+              "clearance_m":round(float(clearance),3),
+              "estimated_position_xyz":([round(float(a),3) for a in nav_xyz]
+                                         if 'nav_xyz' in locals() else None),
+              "waypoint_index":idx}
         minimum=min(minimum,clearance)
+        if clearance<.25 and first_clearance_violation is None:
+            first_clearance_violation={"t_s":round(float(data.time),3),
+               "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "clearance_m":round(float(clearance),3),"waypoint_index":idx}
+        if data.ncon>0 and first_contact is None:
+            first_contact={"t_s":round(float(data.time),3),
+               "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "clearance_m":round(float(clearance),3),"waypoint_index":idx}
         contacts+=int(data.ncon>0)
         if k%25==0:
             p=data.qpos;v=data.qvel
@@ -432,6 +448,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
                 max_tracking_error_m=round(max_error,2),
                 xy_tracking_rms_m=round(math.sqrt(sum(x*x for x in cross_track)/max(1,len(cross_track))),3),
+                first_contact=first_contact,
+                first_clearance_violation=first_clearance_violation,
+                minimum_clearance_event=minimum_clearance_event,
                 route_waypoints=len(waypoints),end_position_xyz=[round(float(a),3) for a in data.qpos[:3]])
     if require_completion and (not result['completed'] or contacts>0 or minimum<.25):
         raise RuntimeError('Route failed native MuJoCo safety validation: '+str(result))
