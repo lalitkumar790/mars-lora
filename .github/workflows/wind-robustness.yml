@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - 'experiments/wind_robustness.py'
+      - 'mujoco_sim/validate_mission.py'
+      - 'mujoco_sim/test_clearance_grid.py'
       - '.github/workflows/wind-robustness.yml'
 permissions:
   contents: write
@@ -23,6 +25,8 @@ jobs:
           python-version: '3.11'
       - name: Install native MuJoCo
         run: python -m pip install mujoco==3.3.2
+      - name: Verify full-city collision broadphase exactly near obstacles
+        run: python -m unittest mujoco_sim.test_clearance_grid -v
       - name: Execute 60 legacy, high-authority and integral-guard wind cases
         run: python -m experiments.wind_robustness --routes results/rf_navigation/routes.json --output results/wind_robustness
       - name: Publish safety sweep including negative results
