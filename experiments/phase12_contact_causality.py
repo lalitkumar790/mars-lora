@@ -40,6 +40,12 @@ def main():
            "reference_started":f["reference_started"],
            "risk_alarm_first":f["first_risk_alarm"],
            "risk_alarm_count":f["risk_alarm_count"],
+           "confidence_warning_first":f["loss_of_confidence_first"],
+           "confidence_warning_samples":f["loss_of_confidence_samples"],
+           "confidence_lead_time_s":(
+               round(f["first_contact"]["t_s"]-f["loss_of_confidence_first"]["t_s"],3)
+               if f["first_contact"] is not None and f["loss_of_confidence_first"] is not None
+               else None),
            "risk_monitor_checks":f["risk_monitor_checks"],
            "lead_time_s":(round(f["first_contact"]["t_s"]-f["first_risk_alarm"]["t_s"],3)
                if f["first_contact"] is not None and
