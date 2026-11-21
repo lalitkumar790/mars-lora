@@ -36,7 +36,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             tar -xzf /tmp/barrier-results.tgz
-            git add results/barrier_guard
+            git add results/barrier_ttc
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'results: CBF-inspired obstacle-distance safety guard validation [skip ci]'
             if git push origin HEAD:main; then exit 0; fi
@@ -46,4 +46,4 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: barrier-v2-controller-research-validation
-          path: results/barrier_guard/*
+          path: results/barrier_ttc/*
