@@ -53,19 +53,17 @@ def register_scan(prior,yaw,ranges,boxes,max_step=.9,limit=RANGE):
     def loss(p):
         predicted=scan_at(p,yaw,boxes,limit)
         return sum(min(4.,(predicted[i]-ranges[i])**2) for i in observed)/len(observed)
-    best=tuple(float(x) for x in prior)
+    origin=tuple(float(x) for x in prior)
+    best=origin
     initial=loss(best);score=initial
     for dx in (-max_step,0.,max_step):
         for dy in (-max_step,0.,max_step):
             for dz in (-.6,0.,.6):
-                p=(best[0]+dx,best[1]+dy,best[2]+dz)
+                p=(origin[0]+dx,origin[1]+dy,origin[2]+dz)
                 e=loss(p)
-                if e<score:score=e;choice=p
-                else:continue
-                if e<initial:pass
-    # Recenter around best of coarse grid, then refine.
-    coarse=locals().get("choice",best)
-    best=coarse
+                if e<score:score=e;best=p
+    # Recenter around the lowest-error coarse-grid candidate.
+    coarse=best
     for dx in (-.22,0.,.22):
         for dy in (-.22,0.,.22):
             for dz in (-.16,0.,.16):
