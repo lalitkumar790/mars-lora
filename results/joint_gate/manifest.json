@@ -2,6 +2,7 @@
   "purpose": "Falsify a joint ex-ante map-known route and fixed-SF gate",
   "scientific_status": "post-hoc development; not independent validation",
   "completed_trials": 200,
+  "airtime_budget_fraction": null,
   "policies": "joint selected route with fixed selected SF and priority scheduling versus both adaptive-SF route baselines",
   "caveats": [
     "Threshold weights chosen after inspecting synthetic channel scenario outcomes",
