@@ -74,7 +74,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
-        lidar_blackout_window=None):
+        lidar_blackout_window=None,replan_stopping_envelope=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
@@ -113,6 +113,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_accel_bias=[imu_bias_rng.gauss(0.,.003) for _ in range(3)]
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
+    stopping_envelope_rejections=0
     last_replan_time=-100.
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
@@ -251,6 +252,19 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                        margin=required_margin,
                                        solids=scene_solids)<required_margin-1.e-6):
                         raise ValueError('Unsafe replan splice')
+                    if replan_stopping_envelope:
+                        from mars_lora.replan_envelope import check_handoff
+                        check=check_handoff(
+                            nav_xyz,nav_velocity,updated.points,scene_solids,
+                            vehicle_radius_m=radius,
+                            localization_sigma_m=inertial.sigma_m,
+                            required_clearance_m=.25,
+                            braking_accel_m_s2=.8,
+                            actuator_delay_s=.2,
+                            wind_accel_bound_m_s2=.15)
+                        if not check.accepted:
+                            stopping_envelope_rejections+=1
+                            raise ValueError('Unsafe stopping-envelope handoff: '+check.reason)
                     # Do not switch trajectories during significant lateral
                     # travel; an abrupt turn at speed creates a real contact.
                     if math.hypot(nav_velocity[0],nav_velocity[1])>.45:
@@ -402,6 +416,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 dynamic_replanning=dynamic_replanning,
                 lidar_blackout_window=lidar_blackout_window,
                 map_replans=map_replans,map_replan_failures=map_replan_failures,
+                replan_stopping_envelope=replan_stopping_envelope,
+                stopping_envelope_rejections=stopping_envelope_rejections,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
