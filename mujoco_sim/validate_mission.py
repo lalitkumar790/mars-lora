@@ -36,7 +36,9 @@ def quat_to_rpy(q):
     return (math.atan2(2*(w*x+y*z),1-2*(x*x+y*y)),
             math.asin(clamp(2*(w*y-z*x),-1,1)),
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
-def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False):
+def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,controller_mode='legacy'):
+    if controller_mode not in ('legacy','high_authority'):
+        raise ValueError('Unsupported controller mode')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
     root=Path(__file__).resolve().parents[1]
@@ -73,19 +75,27 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             if L>1e-9:
                 ux,uy=dx/L,dy/L
                 along=clamp((p[0]-ax0)*ux+(p[1]-ay0)*uy,0,L)
-                lead=clamp(along+.9,0,L)
+                lookahead=1.5 if controller_mode=='high_authority' else .9
+                lead=clamp(along+lookahead,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
             rising=target[2]>=6.8 and p[2]<target[2]-.35
             desired[0]=p[0] if rising else goalx
             desired[1]=p[1] if rising else goaly
             desired[2]=target[2]
-            ax=clamp(1.0*(desired[0]-p[0])-1.65*v[0],-1.2,1.2)
-            ay=clamp(1.0*(desired[1]-p[1])-1.65*v[1],-1.2,1.2)
+            if controller_mode=='high_authority':
+                # Experimental extra control authority: more forward bias,
+                # faster correction and larger permitted tilt. This may
+                # create NEW contact risks and must be validated separately.
+                gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
+            else:
+                gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
+            ax=clamp(gain*(desired[0]-p[0])-damping*v[0],-accel_limit,accel_limit)
+            ay=clamp(gain*(desired[1]-p[1])-damping*v[1],-accel_limit,accel_limit)
             bx=math.cos(yaw)*ax+math.sin(yaw)*ay
             by=-math.sin(yaw)*ax+math.cos(yaw)*ay
-            rt=clamp(-by/9.81,-.16,.16)
-            pt=clamp(bx/9.81,-.16,.16)
+            rt=clamp(-by/9.81,-tilt_limit,tilt_limit)
+            pt=clamp(bx/9.81,-tilt_limit,tilt_limit)
             tilt_factor=max(.8,math.cos(roll)*math.cos(pitch))
             force=mass*clamp((9.81+3*(desired[2]-p[2])-2.9*v[2])/tilt_factor,1,18)
             mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
@@ -122,7 +132,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         with file.open("w",newline="") as f:
             writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
             writer.writerows(records)
-    result=dict(airframe=airframe,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
+    result=dict(airframe=airframe,controller_mode=controller_mode,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
                 max_tracking_error_m=round(max_error,2),
