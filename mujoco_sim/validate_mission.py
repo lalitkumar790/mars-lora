@@ -76,11 +76,13 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
         altitude_slew_m_s=None,trajectory_speed_limits=None,
-        trajectory_reference=None,online_risk_monitor=False):
+        trajectory_reference=None,online_risk_monitor=False,eskf_shadow=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if eskf_shadow and localization_mode!='lidar_imu3d_hybrid':
+        raise ValueError('ESKF shadow comparison requires native hybrid sensor stream')
     if altitude_slew_m_s is not None and (not math.isfinite(altitude_slew_m_s) or altitude_slew_m_s<=0):
         raise ValueError('Altitude slew rate must be positive and finite')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
@@ -137,6 +139,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
+    shadow=None
+    shadow_error_squared=0.;shadow_error_max=0.;shadow_samples=0
+    shadow_nees_99_inside=0;shadow_scan_accepted=0;shadow_scan_rejected=0
+    if eskf_shadow:
+        from mars_lora.lidar_imu_eskf import TranslationalESKF
+        shadow=TranslationalESKF.initial(tuple(float(x) for x in data.qpos[:3]))
     lidar_accepted=lidar_rejected=0
     next_lidar_time=1.0
     localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
@@ -165,15 +173,21 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 inertial.predict(measured_accel,
                                 float(v[5])+localization_rng.gauss(0.,.003),
                                 localization_dt)
+                if shadow is not None:
+                    shadow.predict(measured_accel,localization_dt)
                 if localization_mode=='lidar_imu3d_hybrid':
                     # Actual native truth ONLY generates noisy surrogate
                     # barometer and ground-optical-flow sensor observations.
                     z_obs=float(p[2])+localization_rng.gauss(0.,.06)
                     inertial.correct_altitude(z_obs)
+                    if shadow is not None:
+                        shadow.update_altitude(z_obs,std_m=.06)
                     if p[2]<12.:  # flow degenerates above texture/range limit
                         flowx=float(v[0])+localization_rng.gauss(0.,.045)
                         flowy=float(v[1])+localization_rng.gauss(0.,.045)
                         inertial.correct_horizontal_flow(flowx,flowy)
+                        if shadow is not None:
+                            shadow.update_horizontal_flow(flowx,flowy,std_m=.045)
                 if t>=next_lidar_time:
                     blackout=(lidar_blackout_window is not None and
                               lidar_blackout_window[0]<=t<=lidar_blackout_window[1])
@@ -184,6 +198,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         reading=simulate_scan(tuple(float(x) for x in p[:3]),
                                               yaw,scene_solids,lidar_rng,
                                               noise=.06,dropout=.03)
+                        if shadow is not None:
+                            from mars_lora.lidar_imu3d import register_scan
+                            shadow_candidate,shadow_fit,shadow_score,shadow_hits=register_scan(
+                                tuple(shadow.position),inertial.yaw,reading,scene_solids)
+                            if shadow_fit:
+                                check=shadow.update_position(shadow_candidate,std_m=.20)
+                                shadow_scan_accepted+=int(check.accepted)
+                                shadow_scan_rejected+=int(not check.accepted)
+                            else:
+                                shadow_scan_rejected+=1
                         accepted,scan_score,hits=inertial.correct(reading,scene_solids)
                         if accepted:lidar_accepted+=1
                         else:
@@ -235,6 +259,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 nav_yaw=yaw
             navigation_error=(math.dist(nav_xyz,p[:3]) if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid')
                               else math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1]))
+            if shadow is not None:
+                # Offline truth is used for scoring only; shadow never
+                # drives control inputs, the baseline estimator or replans.
+                distance=math.dist(shadow.position,p[:3])
+                shadow_error_squared+=distance*distance
+                shadow_error_max=max(shadow_error_max,distance)
+                shadow_samples+=1
+                shadow_nees_99_inside+=int(shadow.position_nees(p[:3])<=11.345)
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
@@ -558,6 +590,16 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     result=dict(airframe=airframe,controller_mode=controller_mode,city_seed=city_seed,wind_phase=round(float(wind_phase),3),
                 navigation_ate_rmse_m=round(math.sqrt(localization_sq_sum/max(1,localization_updates)),4),
                 navigation_max_error_m=round(localization_max_error,4),
+                eskf_shadow_enabled=eskf_shadow,
+                eskf_shadow_ate_rmse_m=(round(math.sqrt(shadow_error_squared/max(1,shadow_samples)),4)
+                                        if shadow is not None else None),
+                eskf_shadow_max_error_m=(round(shadow_error_max,4) if shadow is not None else None),
+                eskf_shadow_99pct_coverage=(round(shadow_nees_99_inside/max(1,shadow_samples),4)
+                                              if shadow is not None else None),
+                eskf_shadow_position_rms_sigma_m=(round(shadow.position_rms_sigma_m,4)
+                                                    if shadow is not None else None),
+                eskf_shadow_scan_accepted=shadow_scan_accepted,
+                eskf_shadow_scan_rejected=shadow_scan_rejected,
                 localization_drift_m_sqrt_s=localization_drift_m_sqrt_s,
                 localization_measurement_sigma_m=localization_noise_sigma_m,
                 localization_seed=localization_seed,
