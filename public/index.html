@@ -24,7 +24,8 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <button id="land">↓ Land</button>
 <label class="field full" for="missionType" style="margin:0">Flight mission</label>
 <select id="missionType" class="full"><option value="inspection">High-altitude inspection (7 m)</option><option value="mapping">GPS-denied landmark survey (3.2 m)</option><option value="astar_shortest">3D A*: shortest safe urban route</option><option value="astar_rf">3D A*: LoRa-aware safe urban route</option></select>
-<button id="mission" class="full">▶ Start selected mission</button>
+<button id="mission" class="primary full">▶ Generate NEW city + start selected mission</button>
+<p id="plannerStatus" class="full" style="margin:4px 0;color:#8bd6f0">Choose either urban A* mode. Each start generates a new city, destination and physical mission.</p>
 <button id="pause">Ⅱ Pause</button>
 <button id="reset" class="danger">↺ Reset</button>
 <button id="hover" class="full">◎ Hold position</button>
@@ -50,6 +51,7 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <p>*Drift is calculated using simulator truth for research evaluation only and never supplied to the SLAM pose estimator.</p>
 <h2>Urban test environment</h2>
 <p id="cityStats">Loading city geometry…</p>
+<p>Open lawns, parks, wider roads and scattered buildings are included. Trees and decorative street furniture are visual-only; structural buildings are collision solids.</p>
 <section class="controls"><button id="cityCamera" class="full">⌾ City overview camera</button></section>
 <p>Urban canyon buildings and roads are procedurally generated with a fixed seed. Buildings have matching physical MuJoCo colliders. This is a city-scale research scene, not a georeferenced OpenStreetMap digital twin.</p>
 <h2>Environment</h2><p>Inspection complex: industrial blocks, cargo container, antenna tower, pylon, and overhead beam with MuJoCo collision geometry. Mission planner first climbs to a 7 m transit corridor above the tallest structure, then follows elevated waypoints and returns to base.</p>
@@ -111,7 +113,8 @@ body{margin:0;overflow:hidden}button,input,select{font:inherit}button{border:1px
 <canvas id="missionMap" width="440" height="310" aria-label="Live top-down drone route and obstacle map" style="width:100%;height:205px;border:1px solid #263e55;border-radius:9px"></canvas>
 <p>Amber: safe transit corridor · Blue: vehicle · Red: solid collision geometry · Cyan: radio path (orange when obstructed).</p>
 <h2>Urban 3D route planner</h2>
-<p id="plannerStats">Choose an A* city mission to calculate a new route between (0,0,4) and (-30,24,4). The map and radio geometry are known to the planner; this is not GPS-less map discovery.</p>
+<p id="missionIdentity">No randomized A* mission generated yet.</p>
+<p id="plannerStats">Each urban A* start generates a new city seed, a different collision-safe destination and a fresh takeoff. The planner uses known physics geometry; this is not GPS-denied map discovery.</p>
 <div class="met">
 <div class="metric"><div class="k">Planned route length</div><div class="v" id="planDistance">—</div></div>
 <div class="metric"><div class="k">Minimum static clearance</div><div class="v" id="planClearance">—</div></div>
