@@ -221,7 +221,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             target=waypoints[idx]
             if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') and dynamic_replanning and (
                 inertial.sigma_m>.20 and t-last_replan_time>24. and
-                map_replans<3 and idx<len(waypoints)-1):
+                map_replans<2 and idx<len(waypoints)-1):
                 # Dynamic uncertainty-triggered map-known A*: the estimator
                 # drives start XYZ; truth is NEVER used for replanning.
                 from mars_lora.rf_astar import plan
@@ -231,8 +231,25 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                         radius=(.08 if airframe=='crazyflie' else .32),
                         localization_sigma_m=min(.45,inertial.sigma_m),
                         max_nodes=16000)
-                    waypoints=[tuple(nav_xyz)]+updated.points[1:]
-                    idx=1;map_replans+=1
+                    # Safe splice: the continuous transition from estimated
+                    # current pose to the snapped A* grid origin is mandatory.
+                    # V3 incorrectly discarded that first grid node and
+                    # jumped toward node 2, cutting across nearby structures.
+                    from mars_lora.rf_astar import path_clearance
+                    radius=(.08 if airframe=='crazyflie' else .32)
+                    transition=[tuple(nav_xyz),*updated.points]
+                    required_margin=.55+3*min(.45,inertial.sigma_m)
+                    if (math.dist(transition[0],transition[1])>2.8 or
+                        path_clearance(transition,radius=radius,
+                                       margin=required_margin,
+                                       solids=scene_solids)<required_margin-1.e-6):
+                        raise ValueError('Unsafe replan splice')
+                    # Do not switch trajectories during significant lateral
+                    # travel; an abrupt turn at speed creates a real contact.
+                    if math.hypot(nav_velocity[0],nav_velocity[1])>.85:
+                        raise ValueError('Replan handoff speed too high')
+                    waypoints=transition[1:]
+                    idx=0;map_replans+=1
                     target=waypoints[idx]
                 except (RuntimeError,ValueError,AssertionError):
                     map_replan_failures+=1
