@@ -75,7 +75,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
-        altitude_slew_m_s=None,trajectory_speed_limits=None):
+        altitude_slew_m_s=None,trajectory_speed_limits=None,
+        trajectory_reference=None):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
@@ -86,6 +87,12 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
+    if trajectory_reference is not None and (
+            dynamic_replanning or trajectory_speed_limits is not None or
+            altitude_slew_m_s is not None or
+            len(trajectory_reference.samples)<2):
+        raise ValueError('Timed reference is exclusive with replanning, slew and waypoint-speed tracking')
+
     if trajectory_speed_limits is not None and (len(trajectory_speed_limits)!=len(waypoints) or
         any(not math.isfinite(v) or v<0 for v in trajectory_speed_limits)):
         raise ValueError('Trajectory speed limits must be finite and align with waypoints')
@@ -121,6 +128,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     map_replans=map_replan_failures=localization_lost_events=0
     first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
     stopping_envelope_rejections=0
+    reference_start_t=None;reference_index=0;reference_settle_s=None
     accepted_replan_events=[];rejected_replan_events=[]
     last_replan_time=-100.
     replan_anchor_xy=None
@@ -296,7 +304,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 last_replan_time=t
             delta=[target[i]-nav_xyz[i] for i in range(3)]
             speed3=math.sqrt(sum(nav_velocity[i]**2 for i in range(3)))
-            if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
+            if trajectory_reference is None and math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
                 if controller_mode=='integral_guard':
                     x_integral=y_integral=0.
@@ -325,6 +333,37 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 desired[2]+=clamp(target[2]-desired[2],
                                    -.02*altitude_slew_m_s,
                                    .02*altitude_slew_m_s)
+            reference_state=None
+            if trajectory_reference is not None:
+                # Reference time starts only when the UAV has first reached
+                # the reference launch pose. This avoids pretending that the
+                # MuJoCo craft was initialized in hover at z=4m.
+                init=trajectory_reference.samples[0]
+                if reference_start_t is None and (
+                    math.dist(nav_xyz,init.xyz)<.50 and speed3<.65):
+                    reference_start_t=t
+                if reference_start_t is None:
+                    reference_state=init
+                else:
+                    t_ref=max(0.,t-reference_start_t)
+                    samples=trajectory_reference.samples
+                    while (reference_index+1<len(samples)-1 and
+                           samples[reference_index+1].t_s<=t_ref):
+                        reference_index+=1
+                    prev=samples[reference_index]
+                    nxt=samples[min(reference_index+1,len(samples)-1)]
+                    f_ref=clamp((t_ref-prev.t_s)/max(1e-8,nxt.t_s-prev.t_s),0.,1.)
+                    from mars_lora.kinodynamic_reference import ReferenceSample
+                    reference_state=ReferenceSample(
+                        t_ref,
+                        tuple(prev.xyz[j]*(1-f_ref)+nxt.xyz[j]*f_ref for j in range(3)),
+                        tuple(prev.velocity_xyz[j]*(1-f_ref)+nxt.velocity_xyz[j]*f_ref for j in range(3)),
+                        tuple(prev.acceleration_xyz[j]*(1-f_ref)+nxt.acceleration_xyz[j]*f_ref for j in range(3)),
+                        (0.,0.,0.))
+                    if t_ref>=trajectory_reference.duration_s:
+                        idx=len(waypoints)-1
+                        if reference_settle_s is None:reference_settle_s=t
+                desired[:]=list(reference_state.xyz)
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
             elif controller_mode in ('barrier_guard','barrier_ttc'):
@@ -353,7 +392,10 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
             xi=x_integral if controller_mode=='integral_guard' else 0.
             yi=y_integral if controller_mode=='integral_guard' else 0.
-            if trajectory_speed_limits is None:
+            if reference_state is not None:
+                ax=clamp(reference_state.acceleration_xyz[0]+gain*(desired[0]-nav_xy[0])+damping*(reference_state.velocity_xyz[0]-nav_velocity[0]),-accel_limit,accel_limit)
+                ay=clamp(reference_state.acceleration_xyz[1]+gain*(desired[1]-nav_xy[1])+damping*(reference_state.velocity_xyz[1]-nav_velocity[1]),-accel_limit,accel_limit)
+            elif trajectory_speed_limits is None:
                 ax=clamp(gain*(desired[0]-nav_xy[0])-damping*nav_velocity[0]+.9*xi,-accel_limit,accel_limit)
                 ay=clamp(gain*(desired[1]-nav_xy[1])-damping*nav_velocity[1]+.9*yi,-accel_limit,accel_limit)
             else:
@@ -413,7 +455,13 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             rt=clamp(-by/9.81,-tilt_limit,tilt_limit)
             pt=clamp(bx/9.81,-tilt_limit,tilt_limit)
             tilt_factor=max(.8,math.cos(roll)*math.cos(pitch))
-            force=mass*clamp((9.81+3*(desired[2]-nav_xyz[2])-2.9*nav_velocity[2])/tilt_factor,1,18)
+            if reference_state is not None:
+                zacc=(9.81+reference_state.acceleration_xyz[2]+
+                      3*(desired[2]-nav_xyz[2])+
+                      2.9*(reference_state.velocity_xyz[2]-nav_velocity[2]))
+            else:
+                zacc=9.81+3*(desired[2]-nav_xyz[2])-2.9*nav_velocity[2]
+            force=mass*clamp(zacc/tilt_factor,1,18)
             mx=moment_scale*clamp(.95*(rt-roll)-.32*v[3],-.55,.55)
             my=moment_scale*clamp(.95*(pt-pitch)-.32*v[4],-.55,.55)
             arms=((armx,army),(armx,-army),(-armx,-army),(-armx,army)) if airframe=="crazyflie" else ((-armx,-army),(-armx,army),(armx,army),(armx,-army))
@@ -479,6 +527,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 stopping_envelope_rejections=stopping_envelope_rejections,
                 altitude_slew_m_s=altitude_slew_m_s,
                 trajectory_speed_profile_enabled=trajectory_speed_limits is not None,
+                trajectory_reference_enabled=trajectory_reference is not None,
+                reference_started=reference_start_t is not None,
+                reference_settle_s=reference_settle_s,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
