@@ -8,6 +8,7 @@ import argparse
 import csv
 import json
 import math
+import random
 from pathlib import Path
 import mujoco
 import sys
@@ -68,9 +69,13 @@ def quat_to_rpy(q):
             math.asin(clamp(2*(w*y-z*x),-1,1)),
             math.atan2(2*(w*z+x*y),1-2*(y*y+z*z)))
 def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=False,
-        controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED):
+        controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
+        localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
+        localization_seed=0):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
+    if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
+        raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
     if len(waypoints)<2:raise ValueError('A flight requires at least 2 waypoints')
     root=Path(__file__).resolve().parents[1]
@@ -88,6 +93,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     idx=0;contacts=0;minimum=1e6;max_tilt=0;max_error=0;last_controller=-1
     x_integral=y_integral=0.0; safety_holds=0;max_lateral_error=0.
     records=[];cross_track=[]
+    # This models pose-ESTIMATE perturbations, not a functioning SLAM solver.
+    # Orientation and velocity remain MuJoCo truth/IMU proxies: optimistic.
+    localization_rng=random.Random(localization_seed)
+    localization_bias=[0.,0.]
+    localization_sq_sum=0.;localization_max_error=0.;localization_updates=0
     dt=model.opt.timestep
     steps=round(duration/dt)
     for k in range(steps):
@@ -95,8 +105,19 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         p=data.qpos;v=data.qvel
         if k%5==0:
             roll,pitch,yaw=quat_to_rpy(p[3:7])
+            localization_dt=5*dt
+            if localization_drift_m_sqrt_s:
+                for axis in (0,1):
+                    localization_bias[axis]+=localization_drift_m_sqrt_s*math.sqrt(localization_dt)*localization_rng.gauss(0.,1.)
+            nav_xy=tuple(float(p[axis])+localization_bias[axis]+(
+                localization_noise_sigma_m*localization_rng.gauss(0.,1.)
+                if localization_noise_sigma_m else 0.) for axis in (0,1))
+            navigation_error=math.hypot(nav_xy[0]-p[0],nav_xy[1]-p[1])
+            localization_sq_sum+=navigation_error**2
+            localization_updates+=1
+            localization_max_error=max(localization_max_error,navigation_error)
             target=waypoints[idx]
-            delta=[target[i]-p[i] for i in range(3)]
+            delta=[target[0]-nav_xy[0],target[1]-nav_xy[1],target[2]-p[2]]
             speed3=math.sqrt(sum(v[i]*v[i] for i in range(3)))
             if math.sqrt(sum(x*x for x in delta))<.5 and speed3<.65 and idx<len(waypoints)-1:
                 idx+=1
@@ -110,14 +131,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             L=math.hypot(dx,dy)
             if L>1e-9:
                 ux,uy=dx/L,dy/L
-                along=clamp((p[0]-ax0)*ux+(p[1]-ay0)*uy,0,L)
+                along=clamp((nav_xy[0]-ax0)*ux+(nav_xy[1]-ay0)*uy,0,L)
                 lookahead=1.5 if controller_mode in ('high_authority','barrier_guard','barrier_ttc') else (1.1 if controller_mode=='integral_guard' else .9)
                 lead=clamp(along+lookahead,0,L)
                 goalx,goaly=ax0+ux*lead,ay0+uy*lead
             else:goalx,goaly=target[0],target[1]
             rising=target[2]>=6.8 and p[2]<target[2]-.35
-            desired[0]=p[0] if rising else goalx
-            desired[1]=p[1] if rising else goaly
+            desired[0]=nav_xy[0] if rising else goalx
+            desired[1]=nav_xy[1] if rising else goaly
             desired[2]=target[2]
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
@@ -147,8 +168,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 gain,damping,accel_limit,tilt_limit=1.0,1.65,1.2,.16
             xi=x_integral if controller_mode=='integral_guard' else 0.
             yi=y_integral if controller_mode=='integral_guard' else 0.
-            ax=clamp(gain*(desired[0]-p[0])-damping*v[0]+.9*xi,-accel_limit,accel_limit)
-            ay=clamp(gain*(desired[1]-p[1])-damping*v[1]+.9*yi,-accel_limit,accel_limit)
+            ax=clamp(gain*(desired[0]-nav_xy[0])-damping*v[0]+.9*xi,-accel_limit,accel_limit)
+            ay=clamp(gain*(desired[1]-nav_xy[1])-damping*v[1]+.9*yi,-accel_limit,accel_limit)
             if controller_mode in ('barrier_guard','barrier_ttc'):
                 # Experimental distance-barrier projection, not a proof of
                 # forward-invariant safety under thrust and wind saturation.
@@ -228,6 +249,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             writer=csv.writer(f);writer.writerow(("t_s","x_m","y_m","z_m","waypoint","obstacle_clearance_m","contact_count","tilt_deg","tracking_error_m"))
             writer.writerows(records)
     result=dict(airframe=airframe,controller_mode=controller_mode,city_seed=city_seed,wind_phase=round(float(wind_phase),3),
+                navigation_ate_rmse_m=round(math.sqrt(localization_sq_sum/max(1,localization_updates)),4),
+                navigation_max_error_m=round(localization_max_error,4),
+                localization_drift_m_sqrt_s=localization_drift_m_sqrt_s,
+                localization_measurement_sigma_m=localization_noise_sigma_m,
+                localization_seed=localization_seed,
                 safety_holds=safety_holds,completed=idx==len(waypoints)-1 and math.dist(data.qpos[:3],waypoints[-1])<.5,
                 elapsed_s=round(float(data.time),2),waypoint_reached=idx+1,
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
