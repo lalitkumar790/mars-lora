@@ -1,0 +1,9 @@
+airframe,controller_mode,city_seed,wind_phase,navigation_ate_rmse_m,navigation_max_error_m,localization_drift_m_sqrt_s,localization_measurement_sigma_m,localization_seed,localization_mode,dynamic_replanning,map_replans,map_replan_failures,estimated_sigma_m,lidar_matches_accepted,lidar_matches_rejected,safety_holds,completed,elapsed_s,waypoint_reached,min_clearance_m,contact_samples,max_tilt_deg,max_tracking_error_m,xy_tracking_rms_m,route_waypoints,end_position_xyz,route,safe
+heavy,legacy,91311,1.92,0.094,0.3396,0.03,0.02,91382,lidar_match,False,0,0,,22,38,0,True,119.93,11,0.9,0,6.13,3.5,0.898,11,"[-30.124, 23.517, 4.0]",shortest,True
+heavy,legacy,91311,1.92,75.3827,153.1953,0.03,0.02,91382,lidar_imu3d,True,3,5,2.3234,4,116,0,False,240.0,2,-0.239,57691,7.12,16.58,9.471,11,"[-3.641, -0.031, 5.138]",shortest,False
+heavy,legacy,91311,1.92,0.1126,0.3297,0.03,0.02,91382,lidar_match,False,0,0,,30,31,0,True,121.59,13,1.157,0,5.75,13.01,0.877,13,"[-30.155, 23.73, 4.253]",rf_aware,True
+heavy,legacy,91311,1.92,92.1531,133.7028,0.03,0.02,91382,lidar_imu3d,True,3,0,2.2322,8,112,0,False,240.0,8,1.483,0,6.32,146.84,19.557,8,"[-7.566, 49.551, 98.218]",rf_aware,False
+heavy,legacy,20483,0.12,0.0884,0.245,0.03,0.02,20554,lidar_match,False,0,0,,16,43,0,True,118.8,13,0.765,0,5.37,3.5,0.889,13,"[-29.894, 23.513, 4.0]",shortest,True
+heavy,legacy,20483,0.12,108.5606,217.2435,0.03,0.02,20554,lidar_imu3d,True,2,7,1.7527,11,109,0,False,240.0,2,-0.246,47101,86.85,12.94,6.593,7,"[-21.22, 2.554, 14.01]",shortest,False
+heavy,legacy,20483,0.12,0.1052,0.3749,0.03,0.02,20554,lidar_match,False,0,0,,22,37,0,True,117.11,12,1.121,0,4.63,6.31,0.868,12,"[-29.894, 24.046, 4.314]",rf_aware,True
+heavy,legacy,20483,0.12,174.7966,317.2275,0.03,0.02,20554,lidar_imu3d,True,3,0,2.3594,1,119,0,False,240.0,7,1.492,0,5.0,317.03,14.591,7,"[-9.089, -3.369, 319.312]",rf_aware,False
