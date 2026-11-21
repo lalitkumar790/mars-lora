@@ -76,7 +76,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
         lidar_blackout_window=None,replan_stopping_envelope=False,
         altitude_slew_m_s=None,trajectory_speed_limits=None,
-        trajectory_reference=None):
+        trajectory_reference=None,online_risk_monitor=False):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
@@ -127,6 +127,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
     first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
+    risk_alarm_first=None;risk_alarm_count=0;risk_monitor_checks=0
     stopping_envelope_rejections=0
     reference_start_t=None;reference_index=0;reference_settle_s=None
     accepted_replan_events=[];rejected_replan_events=[]
@@ -236,6 +237,26 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             localization_sq_sum+=navigation_error**2
             localization_updates+=1
             localization_max_error=max(localization_max_error,navigation_error)
+            if online_risk_monitor:
+                from mars_lora.online_risk_monitor import predict_clearance_alarm
+                sigma=(inertial.sigma_m if inertial is not None else
+                       max(0.,localization_noise_sigma_m))
+                radius=.08 if airframe=='crazyflie' else .32
+                alarm=predict_clearance_alarm(
+                    nav_xyz,nav_velocity,sigma,
+                    lambda q:fast_city_clearance(q,radius,grid=scene_grid))
+                risk_monitor_checks+=1
+                if alarm.warning:
+                    risk_alarm_count+=1
+                    if risk_alarm_first is None:
+                        risk_alarm_first={
+                            "t_s":round(float(t),3),
+                            "reason":alarm.reason,
+                            "predicted_margin_m":round(float(alarm.predicted_margin_m),3),
+                            "stopping_distance_m":round(float(alarm.stopping_distance_m),3),
+                            "estimated_sigma_m":round(float(sigma),3),
+                            "estimated_xyz":[round(float(a),3) for a in nav_xyz]}
+
             target=waypoints[idx]
             if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid') and dynamic_replanning and (
                 inertial.sigma_m>.20 and t-last_replan_time>24. and
@@ -536,6 +557,10 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 altitude_slew_m_s=altitude_slew_m_s,
                 trajectory_speed_profile_enabled=trajectory_speed_limits is not None,
                 trajectory_reference_enabled=trajectory_reference is not None,
+                online_risk_monitor=online_risk_monitor,
+                risk_monitor_checks=risk_monitor_checks,
+                risk_alarm_count=risk_alarm_count,
+                first_risk_alarm=risk_alarm_first,
                 reference_started=reference_start_t is not None,
                 reference_settle_s=reference_settle_s,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
