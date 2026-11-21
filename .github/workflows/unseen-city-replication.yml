@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/unseen-city-replication.yml'
+      - 'experiments/unseen_city_validation.py'
 permissions:
   contents: write
 concurrency:
