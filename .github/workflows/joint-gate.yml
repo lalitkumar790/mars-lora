@@ -29,16 +29,18 @@ jobs:
         run: python -m experiments.joint_gate_audit --seeds 20 --output results/joint_gate
       - name: Replay V2 deadline-budgeted selector on identical radio seeds
         run: python -m experiments.joint_gate_audit --seeds 20 --airtime-budget 0.20 --output results/joint_gate_v2
+      - name: Replay V3 congestion-guarded route and adaptive-SF fallback
+        run: python -m experiments.joint_gate_audit --seeds 20 --airtime-budget 0.20 --congestion-guard 0.20 --output results/joint_gate_v3
       - name: Publish all outcomes including negative trials
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          tar -czf /tmp/joint-gate-results.tgz results/joint_gate results/joint_gate_v2
+          tar -czf /tmp/joint-gate-results.tgz results/joint_gate results/joint_gate_v2 results/joint_gate_v3
           for attempt in 1 2 3 4 5; do
             git fetch origin main
             git reset --hard origin/main
             tar -xzf /tmp/joint-gate-results.tgz
-            git add results/joint_gate results/joint_gate_v2
+            git add results/joint_gate results/joint_gate_v2 results/joint_gate_v3
             if git diff --cached --quiet; then exit 0; fi
             git commit -m 'results: ex-ante route and actual SF joint packet replay [skip ci]'
             if git push origin HEAD:main; then exit 0; fi
@@ -51,3 +53,4 @@ jobs:
           path: |
             results/joint_gate/*
             results/joint_gate_v2/*
+            results/joint_gate_v3/*
