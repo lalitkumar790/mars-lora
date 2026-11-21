@@ -1,0 +1,28 @@
+{
+  "status": "Illustrative momentum-theory hover proxy; not propulsion measurement",
+  "assumptions": {
+    "rho_kg_m3": 1.225,
+    "gravity_m_s2": 9.81,
+    "number_rotors": 4,
+    "vehicles": {
+      "heavy": {
+        "mass_kg": 1.325,
+        "radius_m": 0.11
+      },
+      "crazyflie": {
+        "mass_kg": 0.027,
+        "radius_m": 0.023
+      }
+    },
+    "assumed_efficiency": 0.55
+  },
+  "limitations": [
+    "Rotor radii assumed; not OEM CAD-certified diameters",
+    "Constant hover induced-power baseline, not integrated motor physics",
+    "Does not include profile/parasite drag, climbs, descents, motor losses and payload",
+    "Flight duration represents native MuJoCo motion at fixed wind 0.25",
+    "LoRa TX proxy excludes MCU/RX and is not hardware measured",
+    "Summing proxies is not a calibrated physical energy result"
+  ],
+  "reference": "https://doi.org/10.3390/en12020261"
+}
