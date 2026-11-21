@@ -74,11 +74,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         controller_mode='legacy',wind_phase=0.,city_seed=CITY_SEED,
         localization_drift_m_sqrt_s=0.,localization_noise_sigma_m=0.,
         localization_seed=0,localization_mode='drift',dynamic_replanning=False,
-        lidar_blackout_window=None):
+        lidar_blackout_window=None,replan_stopping_envelope=False,
+        altitude_slew_m_s=None):
     if controller_mode not in ('legacy','high_authority','integral_guard','barrier_guard','barrier_ttc'):
         raise ValueError('Unsupported controller mode')
     if localization_mode not in ('drift','lidar_match','lidar_imu3d','lidar_imu3d_hybrid'):
         raise ValueError('Unknown navigation localization mode')
+    if altitude_slew_m_s is not None and (not math.isfinite(altitude_slew_m_s) or altitude_slew_m_s<=0):
+        raise ValueError('Altitude slew rate must be positive and finite')
     if localization_drift_m_sqrt_s<0 or localization_noise_sigma_m<0:
         raise ValueError('Localization perturbation standard deviations must be nonnegative')
     waypoints=list(ROUTE if route is None else route)
@@ -113,7 +116,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     imu_accel_bias=[imu_bias_rng.gauss(0.,.003) for _ in range(3)]
     imu_last_velocity=[float(x) for x in data.qvel[:3]]
     map_replans=map_replan_failures=localization_lost_events=0
+    first_contact=None;first_clearance_violation=None;minimum_clearance_event=None
+    stopping_envelope_rejections=0
+    accepted_replan_events=[];rejected_replan_events=[]
     last_replan_time=-100.
+    replan_anchor_xy=None
     if localization_mode in ('lidar_imu3d','lidar_imu3d_hybrid'):
         inertial=InertialMapEstimator.initial(tuple(float(x) for x in data.qpos[:3]))
         inertial.process_sigma_m_sqrt_s=max(.012,localization_drift_m_sqrt_s)
@@ -251,15 +258,38 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                        margin=required_margin,
                                        solids=scene_solids)<required_margin-1.e-6):
                         raise ValueError('Unsafe replan splice')
+                    if replan_stopping_envelope:
+                        from mars_lora.replan_envelope import check_handoff
+                        check=check_handoff(
+                            nav_xyz,nav_velocity,updated.points,scene_solids,
+                            vehicle_radius_m=radius,
+                            localization_sigma_m=inertial.sigma_m,
+                            required_clearance_m=.25,
+                            braking_accel_m_s2=.8,
+                            actuator_delay_s=.2,
+                            wind_accel_bound_m_s2=.15)
+                        if not check.accepted:
+                            stopping_envelope_rejections+=1
+                            raise ValueError('Unsafe stopping-envelope handoff: '+check.reason)
                     # Do not switch trajectories during significant lateral
                     # travel; an abrupt turn at speed creates a real contact.
                     if math.hypot(nav_velocity[0],nav_velocity[1])>.45:
                         raise ValueError('Replan handoff speed too high')
                     waypoints=transition[1:]
+                    if replan_stopping_envelope:
+                        # Track from the exact estimated pose validated by
+                        # the stopping-envelope splice, not launch origin.
+                        replan_anchor_xy=tuple(nav_xyz[:2])
                     idx=0;map_replans+=1
+                    accepted_replan_events.append({"t_s":round(float(t),3),
+                        "estimated_xyz":[round(float(a),3) for a in nav_xyz],
+                        "uncertainty_sigma_m":round(float(inertial.sigma_m),3),
+                        "speed_m_s":round(math.sqrt(sum(a*a for a in nav_velocity)),3)})
                     target=waypoints[idx]
-                except (RuntimeError,ValueError,AssertionError):
+                except (RuntimeError,ValueError,AssertionError) as error:
                     map_replan_failures+=1
+                    rejected_replan_events.append({"t_s":round(float(t),3),
+                        "reason":str(error),"sigma_m":round(float(inertial.sigma_m),3)})
                 last_replan_time=t
             delta=[target[i]-nav_xyz[i] for i in range(3)]
             speed3=math.sqrt(sum(nav_velocity[i]**2 for i in range(3)))
@@ -270,7 +300,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 target=waypoints[idx]
             # Match browser lookahead tracking: project current XY onto the
             # segment, advance by 0.9m, and brake at each corner.
-            ax0,ay0=(0,0) if idx==0 else waypoints[idx-1][:2]
+            ax0,ay0=((replan_anchor_xy if replan_anchor_xy is not None else (0,0))
+                     if idx==0 else waypoints[idx-1][:2])
             dx,dy=target[0]-ax0,target[1]-ay0
             L=math.hypot(dx,dy)
             if L>1e-9:
@@ -283,7 +314,14 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
             rising=target[2]>=6.8 and nav_xyz[2]<target[2]-.35
             desired[0]=nav_xy[0] if rising else goalx
             desired[1]=nav_xy[1] if rising else goaly
-            desired[2]=target[2]
+            if altitude_slew_m_s is None:
+                desired[2]=target[2]
+            else:
+                # A bounded command, not a claim that actual vertical speed
+                # or stopping distance are proven safe. Control period 20 ms.
+                desired[2]+=clamp(target[2]-desired[2],
+                                   -.02*altitude_slew_m_s,
+                                   .02*altitude_slew_m_s)
             if controller_mode=='high_authority':
                 gain,damping,accel_limit,tilt_limit=1.8,1.85,2.7,.28
             elif controller_mode in ('barrier_guard','barrier_ttc'):
@@ -375,7 +413,22 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
         # The prior audit only checked the industrial fixtures, ignoring
         # city buildings present in the actual MuJoCo collision model.
         clearance=fast_city_clearance(data.qpos[:3],.08 if airframe=='crazyflie' else .32,grid=scene_grid)
+        if clearance<minimum:
+            minimum_clearance_event={"t_s":round(float(data.time),3),
+              "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+              "clearance_m":round(float(clearance),3),
+              "estimated_position_xyz":([round(float(a),3) for a in nav_xyz]
+                                         if 'nav_xyz' in locals() else None),
+              "waypoint_index":idx}
         minimum=min(minimum,clearance)
+        if clearance<.25 and first_clearance_violation is None:
+            first_clearance_violation={"t_s":round(float(data.time),3),
+               "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "clearance_m":round(float(clearance),3),"waypoint_index":idx}
+        if data.ncon>0 and first_contact is None:
+            first_contact={"t_s":round(float(data.time),3),
+               "position_xyz":[round(float(a),3) for a in data.qpos[:3]],
+               "clearance_m":round(float(clearance),3),"waypoint_index":idx}
         contacts+=int(data.ncon>0)
         if k%25==0:
             p=data.qpos;v=data.qvel
@@ -402,6 +455,9 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 dynamic_replanning=dynamic_replanning,
                 lidar_blackout_window=lidar_blackout_window,
                 map_replans=map_replans,map_replan_failures=map_replan_failures,
+                replan_stopping_envelope=replan_stopping_envelope,
+                stopping_envelope_rejections=stopping_envelope_rejections,
+                altitude_slew_m_s=altitude_slew_m_s,
                 estimated_sigma_m=(round(inertial.sigma_m,4) if inertial is not None else None),
                 lidar_matches_accepted=lidar_accepted,
                 lidar_matches_rejected=lidar_rejected,
@@ -410,6 +466,11 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                 min_clearance_m=round(minimum,3),contact_samples=contacts,max_tilt_deg=round(max_tilt,2),
                 max_tracking_error_m=round(max_error,2),
                 xy_tracking_rms_m=round(math.sqrt(sum(x*x for x in cross_track)/max(1,len(cross_track))),3),
+                first_contact=first_contact,
+                first_clearance_violation=first_clearance_violation,
+                minimum_clearance_event=minimum_clearance_event,
+                accepted_replan_events=accepted_replan_events,
+                rejected_replan_events=rejected_replan_events,
                 route_waypoints=len(waypoints),end_position_xyz=[round(float(a),3) for a in data.qpos[:3]])
     if require_completion and (not result['completed'] or contacts>0 or minimum<.25):
         raise RuntimeError('Route failed native MuJoCo safety validation: '+str(result))
