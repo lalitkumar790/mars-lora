@@ -53,6 +53,13 @@ def at_time(trace,t):
     mix=max(0.,min(1.,(t-a[0])/max(1e-9,b[0]-a[0])))
     return tuple(a[k]*(1-mix)+b[k]*mix for k in (1,2,3))
 
+@lru_cache(maxsize=120000)
+def _spatial_corner(seed,ix,iy,iz):
+    code=(seed*0x9e3779b1+ix*0x85ebca6b+
+          iy*0xc2b2ae35+iz*0x27d4eb2f)&0xffffffff
+    return random.Random(code).gauss(0.,1.)
+
+
 def spatial_shadow_field(position, seed, sigma, correlation_m=14.):
     """Fixed-seed C1-continuous 3-D shadow field, common across both routes.
 
@@ -70,10 +77,8 @@ def spatial_shadow_field(position, seed, sigma, correlation_m=14.):
         for b in (0,1):
             for c in (0,1):
                 # Deterministic cell-specific independent normals.
-                code=(seed*0x9e3779b1+(ix+a)*0x85ebca6b+
-                      (iy+b)*0xc2b2ae35+(iz+c)*0x27d4eb2f)&0xffffffff
                 weight=(fx if a else 1-fx)*(fy if b else 1-fy)*(fz if c else 1-fz)
-                total+=weight*random.Random(code).gauss(0.,1.)
+                total+=weight*_spatial_corner(seed,ix+a,iy+b,iz+c)
     # Finite grid interpolation smooths the field. sigma is a nominal
     # corner SD; interpolated point SD varies across a cell.
     return sigma*total
