@@ -42,11 +42,11 @@ jobs:
           pages=$(pdfinfo paper.pdf | awk '/^Pages:/ {print $2}')
           echo "Pages including references: $pages"
           test "$pages" -le 8
-      - name: Save results to GitHub only
+      - name: Save data and figures to GitHub only (PDF provided as workflow artifact)
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add results/heldout_validation paper/figures/heldout_robustness.pdf paper/figures/heldout_robustness.png paper/paper.pdf
+          git add results/heldout_validation paper/figures/heldout_robustness.pdf paper/figures/heldout_robustness.png
           if ! git diff --cached --quiet; then
             git commit -m 'results: held-out spatial fading and independent LoRa model stress tests [skip ci]'
             for attempt in 1 2 3 4 5; do
