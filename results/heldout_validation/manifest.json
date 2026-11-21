@@ -1,0 +1,79 @@
+{
+  "experiment": "Frozen RF-aware 3D routes evaluated under unseen propagation parameters",
+  "evidence": "native MuJoCo output replay; no new flights; assumed synthetic radio physics",
+  "seeds": 20,
+  "scenarios": {
+    "nominal_spatial": {
+      "name": "nominal_spatial",
+      "path_loss_exponent": 4.0,
+      "obstruction_db": 17.0,
+      "rx_bias_db": 0.0,
+      "interference_fraction": 0.1
+    },
+    "mild_urban": {
+      "name": "mild_urban",
+      "path_loss_exponent": 3.2,
+      "obstruction_db": 9.0,
+      "rx_bias_db": 0.0,
+      "interference_fraction": 0.1
+    },
+    "dense_urban": {
+      "name": "dense_urban",
+      "path_loss_exponent": 4.4,
+      "obstruction_db": 26.0,
+      "rx_bias_db": 0.0,
+      "interference_fraction": 0.1
+    },
+    "receiver_mismatch": {
+      "name": "receiver_mismatch",
+      "path_loss_exponent": 4.0,
+      "obstruction_db": 17.0,
+      "rx_bias_db": -7.0,
+      "interference_fraction": 0.16
+    },
+    "harsh_interference": {
+      "name": "harsh_interference",
+      "path_loss_exponent": 3.7,
+      "obstruction_db": 19.0,
+      "rx_bias_db": 0.0,
+      "interference_fraction": 0.35
+    }
+  },
+  "ground_stations": {
+    "nominal_spatial": [
+      230.0,
+      220.0,
+      120.0
+    ],
+    "mild_urban": [
+      230.0,
+      220.0,
+      120.0
+    ],
+    "dense_urban": [
+      230.0,
+      220.0,
+      120.0
+    ],
+    "receiver_mismatch": [
+      185.0,
+      155.0,
+      75.0
+    ],
+    "harsh_interference": [
+      230.0,
+      220.0,
+      120.0
+    ]
+  },
+  "paired_comparison": "RF-aware route vs shortest route, identical adaptive priority policy",
+  "fading": "shared seeded 3D Gaussian interpolated spatial shadow field",
+  "limitations": [
+    "not a calibrated propagation model or independent physics engine",
+    "same deterministic vehicle trajectories in all scenarios",
+    "receiver change does not trigger online trajectory re-planning",
+    "packet-generation horizon differs across route duration",
+    "95% intervals are conditional on synthetic fading draws and one fixed city",
+    "spatial Gaussian field is smooth with location-dependent SD"
+  ]
+}
