@@ -45,6 +45,8 @@
       ],
       "waypoint_index": 4
     },
+    "accepted_replan_events": [],
+    "rejected_replan_events": [],
     "route_waypoints": 7,
     "end_position_xyz": [
       -0.069,
@@ -98,6 +100,8 @@
       ],
       "waypoint_index": 4
     },
+    "accepted_replan_events": [],
+    "rejected_replan_events": [],
     "route_waypoints": 7,
     "end_position_xyz": [
       -0.236,
