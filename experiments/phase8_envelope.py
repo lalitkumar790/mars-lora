@@ -25,7 +25,8 @@ def evaluate(output,city_seeds=(91311,20483)):
             continue
         for method,waypoints in paths.items():
             for envelope in (False,True):
-                x=run("heavy",duration=240,wind=.25,
+                trace=output / ("flight_%s_%s_%s.csv" % (seed,method,"envelope" if envelope else "v5"))
+                x=run("heavy",duration=240,wind=.25,out=str(trace),
                       wind_phase=(seed%19)*.12,city_seed=seed,
                       controller_mode="legacy",route=waypoints,
                       localization_mode="lidar_imu3d_hybrid",
@@ -34,7 +35,7 @@ def evaluate(output,city_seeds=(91311,20483)):
                       localization_noise_sigma_m=.02,
                       localization_seed=seed+71,
                       lidar_blackout_window=(45.,75.))
-                x.update(route=method,envelope=envelope,
+                x.update(route=method,envelope=envelope,trace_file=trace.name,
                          safe=bool(x["completed"] and x["contact_samples"]==0
                                    and x["min_clearance_m"]>=.25))
                 rows.append(x)
