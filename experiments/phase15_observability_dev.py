@@ -26,7 +26,31 @@ def evaluate(out="results/phase15_observability_dev"):
            dynamic_replanning=False,localization_drift_m_sqrt_s=.03,
            localization_noise_sigma_m=.02,localization_seed=seed+71,
            lidar_blackout_window=(45.,75.))
-        item={"seed":seed,"method":method,"safe":bool(
+        first_contact_time=(f["first_contact"]["t_s"]
+                            if f["first_contact"] is not None else None)
+        scans=f["lidar_observability_timeline"]
+        before=[x for x in scans if first_contact_time is None or
+                x["t_s"]<first_contact_time]
+        first_bad=next((x for x in before if not x["informative"]),None)
+        first_good=next((x for x in before if x["informative"]),None)
+        max_precontact_gap=0.
+        last_good=None
+        for frame in before:
+            if frame["informative"]:last_good=frame["t_s"]
+            if last_good is not None:
+                max_precontact_gap=max(max_precontact_gap,
+                                       frame["t_s"]-last_good)
+        item={"precontact_scan_count":len(before),
+             "precontact_informative":sum(x["informative"] for x in before),
+             "precontact_rank0":sum(x["rank"]==0 for x in before),
+             "precontact_rank2":sum(x["rank"]==2 for x in before),
+             "precontact_rank3":sum(x["rank"]==3 for x in before),
+             "precontact_max_observation_gap_s":round(max_precontact_gap,3),
+             "first_precontact_noninformative_scan_s":(
+                 first_bad["t_s"] if first_bad else None),
+             "first_precontact_informative_scan_s":(
+                 first_good["t_s"] if first_good else None),
+             "seed":seed,"method":method,"safe":bool(
                  f["completed"] and f["contact_samples"]==0 and f["min_clearance_m"]>=.25),
             "legacy_precontact_rmse_m":f["legacy_precontact_rmse_m"],
             "eskf15_precontact_rmse_m":f["eskf15_shadow_precontact_rmse_m"],
