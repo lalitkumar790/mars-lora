@@ -52,7 +52,7 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
         with (out/"trials.csv").open("w",newline="") as f:
             w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
     summary=[]
-    for mode,replanning in MODES:
+    for mode,replanning in modes:
         xs=[x for x in rows if x["localization_mode"]==mode]
         if not xs:continue
         summary.append(dict(mode=mode,scenarios=len(xs),
@@ -81,7 +81,7 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
 if __name__=="__main__":
     import argparse
     parser=argparse.ArgumentParser()
-    parser.add_argument("--output",default="results/imu3d_replanning_v3")
+    parser.add_argument("--output",default="results/imu3d_replanning_v4")
     parser.add_argument("--hybrid",action="store_true")
     args=parser.parse_args()
     evaluate(output=args.output,hybrid=args.hybrid)
