@@ -1,0 +1,180 @@
+{
+  "scenarios": 20,
+  "passed": 12,
+  "failed": [
+    {
+      "airframe": "heavy",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 1.045,
+      "contact_samples": 0,
+      "max_tilt_deg": 9.91,
+      "max_tracking_error_m": 3.5,
+      "xy_tracking_rms_m": 1.049,
+      "route_waypoints": 11,
+      "end_position_xyz": [
+        -0.733,
+        1.048,
+        4.001
+      ],
+      "route": "shortest",
+      "wind_scale": 1.5,
+      "passed": false
+    },
+    {
+      "airframe": "heavy",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 1.045,
+      "contact_samples": 0,
+      "max_tilt_deg": 9.91,
+      "max_tracking_error_m": 3.5,
+      "xy_tracking_rms_m": 1.049,
+      "route_waypoints": 13,
+      "end_position_xyz": [
+        -0.733,
+        1.048,
+        4.001
+      ],
+      "route": "rf_aware",
+      "wind_scale": 1.5,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 1.139,
+      "contact_samples": 0,
+      "max_tilt_deg": 9.91,
+      "max_tracking_error_m": 3.99,
+      "xy_tracking_rms_m": 2.706,
+      "route_waypoints": 11,
+      "end_position_xyz": [
+        -3.579,
+        1.644,
+        4.0
+      ],
+      "route": "shortest",
+      "wind_scale": 0.5,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": -0.123,
+      "contact_samples": 94453,
+      "max_tilt_deg": 183.09,
+      "max_tracking_error_m": 23.17,
+      "xy_tracking_rms_m": 8.183,
+      "route_waypoints": 11,
+      "end_position_xyz": [
+        -0.266,
+        6.926,
+        0.012
+      ],
+      "route": "shortest",
+      "wind_scale": 1.0,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 0.925,
+      "contact_samples": 106808,
+      "max_tilt_deg": 110.55,
+      "max_tracking_error_m": 31.98,
+      "xy_tracking_rms_m": 31.344,
+      "route_waypoints": 11,
+      "end_position_xyz": [
+        -15.319,
+        -27.706,
+        0.05
+      ],
+      "route": "shortest",
+      "wind_scale": 1.5,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 1.139,
+      "contact_samples": 0,
+      "max_tilt_deg": 9.91,
+      "max_tracking_error_m": 3.99,
+      "xy_tracking_rms_m": 2.706,
+      "route_waypoints": 13,
+      "end_position_xyz": [
+        -3.579,
+        1.644,
+        4.0
+      ],
+      "route": "rf_aware",
+      "wind_scale": 0.5,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": -0.123,
+      "contact_samples": 94453,
+      "max_tilt_deg": 183.09,
+      "max_tracking_error_m": 23.17,
+      "xy_tracking_rms_m": 8.183,
+      "route_waypoints": 13,
+      "end_position_xyz": [
+        -0.266,
+        6.926,
+        0.012
+      ],
+      "route": "rf_aware",
+      "wind_scale": 1.0,
+      "passed": false
+    },
+    {
+      "airframe": "crazyflie",
+      "completed": false,
+      "elapsed_s": 440.0,
+      "waypoint_reached": 1,
+      "min_clearance_m": 0.925,
+      "contact_samples": 106808,
+      "max_tilt_deg": 110.55,
+      "max_tracking_error_m": 31.98,
+      "xy_tracking_rms_m": 31.344,
+      "route_waypoints": 13,
+      "end_position_xyz": [
+        -15.319,
+        -27.706,
+        0.05
+      ],
+      "route": "rf_aware",
+      "wind_scale": 1.5,
+      "passed": false
+    }
+  ],
+  "wind_levels": [
+    0.0,
+    0.25,
+    0.5,
+    1.0,
+    1.5
+  ],
+  "scope": "Deterministic sinusoidal disturbance force amplitudes, not real wind speeds",
+  "limitations": [
+    "No randomized aerodynamic turbulence or different obstacle layouts",
+    "Wind amplitude is a force-proxy parameter, not m/s",
+    "One trial per airframe/route/wind; no uncertainty intervals",
+    "Planner precomputes geometry before wind; controller is not retuned"
+  ]
+}
