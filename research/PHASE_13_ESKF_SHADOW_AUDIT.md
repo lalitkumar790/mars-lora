@@ -41,7 +41,23 @@ Run [44912014553](https://github.com/lalitkumar790/mars-lora/actions/runs/449120
 | 91311 shortest | .0685m | .0451m | 1 / 3 | Safe |
 | 48221 RF-aware | 37.475m | **123.6023m** | 1 / 4 | Unsafe |
 
-At failure, ESKF reached maximum position error 325.23m and only 37.92% empirical nominal-99%-ellipsoid coverage over the whole failed flight. **This was a regression, not a safety improvement.** It suggests that merely adding scan fixes under a non-calibrated motion/bias/scan model may worsen estimator consistency. Analysis must distinguish errors *before first contact* from divergence after collision; `phase13c` adds that instrumentation.
+At failure, ESKF reached maximum position error 325.23m and only 37.92% empirical nominal-99%-ellipsoid coverage over the whole failed flight.
+
+## Phase 13c: first-contact alignment resolves interpretation of the failure
+
+Run [44912169898](https://github.com/lalitkumar790/mars-lora/actions/runs/44912169898) uses the identical Phase 13b scenario, with additional *offline-only* first-contact telemetry. The shadow observer is again confirmed not to alter the baseline's completion, contact count, duration or legacy ATE.
+
+| Metric on failed city 48221 RF-aware flight | Legacy | Shadow ESKF |
+|---|---:|---:|
+| **Pre-contact position RMSE** | **1.6501m** | **1.3615m** |
+| Position error at first contact (t=88.736s) | 4.113m | 3.889m |
+| Nominal position sigma (proxy / RMS) at impact | .604m scalar | 18.213m RMS from P |
+| Whole-flight RMSE through 240s | 37.475m | 123.6023m |
+
+Thus the ESKF offered some improvement *before* the first collision in this one failure, but was still catastrophically wrong by 3.889m at impact, while expressing extraordinarily broad position uncertainty. After collision its accumulated error became much worse. These data do **not** show accurate navigation, calibrated probabilistic safety, successful relocalization or improved controlled flight.
+
+The prior 2D fallback correction count remains only **4 accepted out of 96** attempts on the failed flight. Failure to obtain trustworthy geometric observations at high altitude appears to be a major bottleneck. Numerical covariance can grow under outages, but without an actuator-safe observability-loss response it cannot protect the vehicle. Next work must validate correctly simulated 3-axis body-frame gyro and specific-force propagation, scan Jacobian/feature observability, and recovery from relocalization failure. Do not adjust gates on this already examined failure and call the next test independent.
+ **This was a regression, not a safety improvement.** It suggests that merely adding scan fixes under a non-calibrated motion/bias/scan model may worsen estimator consistency. Analysis must distinguish errors *before first contact* from divergence after collision; `phase13c` adds that instrumentation.
 
 ## Scientific conclusions and next engineering gate
 
