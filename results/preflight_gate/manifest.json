@@ -1,0 +1,17 @@
+{
+  "status": "Exploratory post-hoc heuristic; not confirmatory research",
+  "policy": "Observable RSSI and measured channel busy slots only",
+  "thresholds": {
+    "sf9_rssi_margin_db": 10,
+    "channel_busy_threshold": 0.25,
+    "cca_pilot_samples": 32
+  },
+  "physics": "Routes from prior verified native MuJoCo runs, not newly flown",
+  "caveats": [
+    "Thresholds chosen after seeing held-out scenario results; selection bias risk",
+    "Synthetic pilot RSSI and channel-busy sampling, not radio hardware",
+    "Decision evaluated on the same scenarios that motivated the heuristic",
+    "Same 3D obstacle/radio loss abstraction still underlies evaluation",
+    "Needs blind city/propagation trials before any paper superiority claim"
+  ]
+}
