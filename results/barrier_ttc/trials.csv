@@ -1,0 +1,21 @@
+airframe,controller_mode,wind_phase,safety_holds,completed,elapsed_s,waypoint_reached,min_clearance_m,contact_samples,max_tilt_deg,max_tracking_error_m,xy_tracking_rms_m,route_waypoints,end_position_xyz,route,wind_scale,passed
+heavy,barrier_ttc,0.0,295,True,51.36,11,0.547,0,12.48,3.5,1.347,11,"[-30.001, 23.833, 3.999]",shortest,0.0,True
+heavy,barrier_ttc,0.0,302,True,51.54,11,0.464,0,13.52,3.5,1.353,11,"[-30.087, 23.713, 4.0]",shortest,0.25,True
+heavy,barrier_ttc,0.0,524,True,53.86,11,0.336,0,14.39,3.5,1.374,11,"[-29.915, 23.707, 4.0]",shortest,0.5,True
+heavy,barrier_ttc,0.0,506,True,57.36,11,0.138,0,15.37,3.5,1.37,11,"[-29.754, 24.217, 3.998]",shortest,1.0,False
+heavy,barrier_ttc,0.0,454,True,85.18,11,-0.036,0,15.49,3.5,1.227,11,"[-29.78, 24.086, 3.999]",shortest,1.5,False
+heavy,barrier_ttc,0.0,17,True,56.51,13,1.098,0,12.5,13.0,1.249,13,"[-29.956, 24.0, 4.253]",rf_aware,0.0,True
+heavy,barrier_ttc,0.0,16,True,56.09,13,1.083,0,13.3,12.99,1.257,13,"[-29.895, 24.027, 4.253]",rf_aware,0.25,True
+heavy,barrier_ttc,0.0,15,True,56.73,13,1.184,0,13.59,13.0,1.253,13,"[-29.867, 24.081, 4.252]",rf_aware,0.5,True
+heavy,barrier_ttc,0.0,13,True,66.51,13,0.707,0,15.89,13.0,1.219,13,"[-29.711, 23.763, 4.252]",rf_aware,1.0,True
+heavy,barrier_ttc,0.0,17,True,98.88,13,0.959,0,20.63,13.0,1.122,13,"[-29.524, 23.849, 3.999]",rf_aware,1.5,True
+crazyflie,barrier_ttc,0.0,146,True,49.6,11,0.783,0,11.77,3.5,1.339,11,"[-30.001, 23.835, 4.0]",shortest,0.0,True
+crazyflie,barrier_ttc,0.0,216,True,52.23,11,0.562,0,15.05,3.5,1.376,11,"[-30.191, 23.539, 4.001]",shortest,0.25,True
+crazyflie,barrier_ttc,0.0,390,True,105.04,11,0.164,0,16.83,3.5,1.101,11,"[-30.208, 24.454, 4.003]",shortest,0.5,False
+crazyflie,barrier_ttc,0.0,1812,False,440.0,1,1.146,0,21.75,3.5,1.712,11,"[-0.845, 2.567, 4.001]",shortest,1.0,False
+crazyflie,barrier_ttc,0.0,110,False,440.0,1,-0.074,107386,182.42,23.14,22.578,11,"[-11.282, -19.794, 0.012]",shortest,1.5,False
+crazyflie,barrier_ttc,0.0,0,True,56.64,13,1.33,0,12.03,13.0,1.244,13,"[-29.956, 24.0, 4.224]",rf_aware,0.0,True
+crazyflie,barrier_ttc,0.0,0,True,64.59,13,1.409,0,15.75,12.99,1.25,13,"[-29.777, 23.823, 4.219]",rf_aware,0.25,True
+crazyflie,barrier_ttc,0.0,0,True,120.33,13,0.639,0,18.13,12.99,1.116,13,"[-29.621, 24.325, 3.992]",rf_aware,0.5,True
+crazyflie,barrier_ttc,0.0,1812,False,440.0,1,1.146,0,21.75,3.5,1.712,13,"[-0.845, 2.567, 4.001]",rf_aware,1.0,False
+crazyflie,barrier_ttc,0.0,110,False,440.0,1,-0.074,107386,182.42,23.14,22.578,13,"[-11.282, -19.794, 0.012]",rf_aware,1.5,False
