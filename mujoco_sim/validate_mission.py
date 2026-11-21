@@ -142,6 +142,7 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
     shadow=None
     shadow_error_squared=0.;shadow_error_max=0.;shadow_samples=0
     shadow_nees_99_inside=0;shadow_scan_accepted=0;shadow_scan_rejected=0
+    shadow_planar_accepted=0;shadow_planar_rejected=0
     if eskf_shadow:
         from mars_lora.lidar_imu_eskf import TranslationalESKF
         shadow=TranslationalESKF.initial(tuple(float(x) for x in data.qpos[:3]))
@@ -223,6 +224,20 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                 corrected,ok,_=match_scan(
                                     prior_xy,inertial.yaw,inertial.position[2],
                                     horizontal,scene_solids)
+                                if shadow is not None:
+                                    # Reuse EXACTLY the planar scan already
+                                    # created for legacy's 3D fallback. No
+                                    # additional random calls or truth enters.
+                                    shadow_xy,shadow_ok,_=match_scan(
+                                        tuple(shadow.position[:2]),inertial.yaw,
+                                        float(shadow.position[2]),horizontal,scene_solids)
+                                    if shadow_ok:
+                                        update=shadow.update_planar_map_position(
+                                            shadow_xy,std_m=.25)
+                                        shadow_planar_accepted+=int(update.accepted)
+                                        shadow_planar_rejected+=int(not update.accepted)
+                                    else:
+                                        shadow_planar_rejected+=1
                                 inertial.correct_planar_lidar(corrected,ok)
                                 if ok:lidar_accepted+=1
                     next_lidar_time+=2.
@@ -600,6 +615,8 @@ def run(airframe,duration=240,wind=.25,out=None,route=None,require_completion=Fa
                                                     if shadow is not None else None),
                 eskf_shadow_scan_accepted=shadow_scan_accepted,
                 eskf_shadow_scan_rejected=shadow_scan_rejected,
+                eskf_shadow_planar_accepted=shadow_planar_accepted,
+                eskf_shadow_planar_rejected=shadow_planar_rejected,
                 localization_drift_m_sqrt_s=localization_drift_m_sqrt_s,
                 localization_measurement_sigma_m=localization_noise_sigma_m,
                 localization_seed=localization_seed,
