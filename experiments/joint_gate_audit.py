@@ -16,7 +16,7 @@ from experiments.heldout_validation import PROFILES,STATIONS
 METRICS=("pdr","critical_deadline_ratio","aoi_p95_s",
          "outage_fraction","tx_energy_j","mission_duration_s")
 
-def evaluate(paths,heldout,output,seeds=20):
+def evaluate(paths,heldout,output,seeds=20,airtime_budget_fraction=None):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     routes=json.loads(Path(paths,"routes.json").read_text())
     alternatives={name:record["points"] for name,record in routes.items()}
@@ -33,7 +33,8 @@ def evaluate(paths,heldout,output,seeds=20):
                 pilot=simulated_pilot(profile,station,seed)
                 chosen,candidates=choose_deadline_route(
                     alternatives,pilot["pilot_rssi_dbm"],
-                    pilot["observed_channel_busy"],receiver=station)
+                    pilot["observed_channel_busy"],receiver=station,
+                    airtime_budget_fraction=airtime_budget_fraction)
                 # Actually replay the jointly chosen fixed SF + priority on
                 # the matching *executed MuJoCo trajectory*. Do not infer
                 # performance from the planner's own predicted score.
@@ -84,6 +85,7 @@ def evaluate(paths,heldout,output,seeds=20):
         "purpose":"Falsify a joint ex-ante map-known route and fixed-SF gate",
         "scientific_status":"post-hoc development; not independent validation",
         "completed_trials":len(all_rows),
+        "airtime_budget_fraction":airtime_budget_fraction,
         "policies":"joint selected route with fixed selected SF and priority scheduling versus both adaptive-SF route baselines",
         "caveats":[
             "Threshold weights chosen after inspecting synthetic channel scenario outcomes",
@@ -102,5 +104,6 @@ if __name__=="__main__":
     p.add_argument("--heldout",default="results/heldout_validation")
     p.add_argument("--output",default="results/joint_gate")
     p.add_argument("--seeds",type=int,default=20)
+    p.add_argument("--airtime-budget",type=float,default=None)
     a=p.parse_args()
-    evaluate(a.flight,a.heldout,a.output,a.seeds)
+    evaluate(a.flight,a.heldout,a.output,a.seeds,a.airtime_budget)
