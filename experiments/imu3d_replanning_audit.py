@@ -20,7 +20,7 @@ DRIFT=.03
 def evaluate(output="results/imu3d_replanning",hybrid=False):
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
     rows=[];planner_errors=[]
-    modes=(("lidar_match",False),("lidar_imu3d_hybrid",True)) if hybrid else MODES
+    modes=(("lidar_match",False),("lidar_imu3d_hybrid",False),("lidar_imu3d_hybrid",True)) if hybrid else MODES
     for seed in CITIES:
         solids=INDUSTRIAL+tuple(city(seed))
         try:
@@ -40,6 +40,7 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
                     localization_seed=seed+71,
                     lidar_blackout_window=((45.,75.) if hybrid else None))
                 result.update(route=route,
+                    evaluation_policy=(mode+('_replan' if replanning else '_no_replan')),
                     safe=bool(result["completed"] and result["contact_samples"]==0
                               and result["min_clearance_m"]>=.25))
                 rows.append(result)
@@ -53,9 +54,10 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
             w=csv.DictWriter(f,fieldnames=list(rows[0]));w.writeheader();w.writerows(rows)
     summary=[]
     for mode,replanning in modes:
-        xs=[x for x in rows if x["localization_mode"]==mode]
+        label=mode+('_replan' if replanning else '_no_replan')
+        xs=[x for x in rows if x["evaluation_policy"]==label]
         if not xs:continue
-        summary.append(dict(mode=mode,scenarios=len(xs),
+        summary.append(dict(mode=label,scenarios=len(xs),
            safety_pass=sum(x["safe"] for x in xs),
            mean_ate_m=mean(x["navigation_ate_rmse_m"] for x in xs),
            total_map_replans=sum(x["map_replans"] for x in xs),
@@ -81,7 +83,7 @@ def evaluate(output="results/imu3d_replanning",hybrid=False):
 if __name__=="__main__":
     import argparse
     parser=argparse.ArgumentParser()
-    parser.add_argument("--output",default="results/imu3d_replanning_v4")
+    parser.add_argument("--output",default="results/imu3d_replanning_v5")
     parser.add_argument("--hybrid",action="store_true")
     args=parser.parse_args()
     evaluate(output=args.output,hybrid=args.hybrid)
