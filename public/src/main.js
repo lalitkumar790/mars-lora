@@ -468,8 +468,8 @@ $('twinFile').addEventListener('change',async e=>{
  }catch(err){$('twinStatus').textContent=err.message;}
 });
 $('twinLive').addEventListener('click',()=>{
- try{const token=$('twinToken').value.trim();if(!token)throw Error('Enter local receiver token');enterTwin('live');const ws=new WebSocket('ws://127.0.0.1:8765/ws');twinSocket=ws;
- ws.onopen=()=>ws.send(JSON.stringify({type:'auth',token}));
+ try{enterTwin('live');const ws=new WebSocket('ws://127.0.0.1:8765/ws');twinSocket=ws;
+ ws.onopen=()=>{$('twinStatus').textContent='Receiver connected; waiting for LoRa telemetry';};
  ws.onmessage=e=>{if(twinSocket!==ws)return;const msg=JSON.parse(e.data);if(msg.type!=='telemetry')return;const a=msg.record;if(a.outOfOrder)return;const r={lat:a.latitude,lon:a.longitude,roll:a.roll,pitch:a.pitch,yaw:a.yaw,seq:a.sequence,received:true,rssi:a.rssi,snr:a.snr,imuFresh:null};if(!twinValid(r))return;if(!twinOrigin)twinOrigin=r;twinRecords.push(r);twinIndex=twinRecords.length-1;twinLastRx=performance.now();twinDraw();};
  ws.onclose=()=>{if(twinSocket===ws)$('twinStatus').textContent='Receiver disconnected; last pose retained';};
  ws.onerror=()=>{$('twinStatus').textContent='Local receiver connection failed';};
