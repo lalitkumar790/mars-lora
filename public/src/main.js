@@ -7,7 +7,7 @@ import {loadAirframeCAD,PHYSICAL_AIRFRAMES} from './airframes.js';
 import {withCity,addCityToScene,regenerateCity,CITY_BUILDINGS,ACTIVE_CITY_SEED} from './city.js';
 import {WaypointTracker} from './trajectory.js';
 import {scanHazard} from './avoidance.js';
-import {planInteractiveRoute,planBuildingSiteMission,predictCoverage,randomUrbanGoal} from './rf_route_planner.js';
+import {planInteractiveRoute,planBuildingSiteMission,predictCoverage,randomUrbanGoal,loadFieldGrid,fieldRouteStats} from './rf_route_planner.js';
 import { missionWaypoints, mappingWaypoints, obstacles, obstacleClearance, plannedPathClearance, transitAltitude } from './mission.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -518,6 +518,16 @@ function on(id,fn){$(id).addEventListener('click',fn);}
 on('takeoff',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],2.5];setMode('Takeoff / hover');});
 on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],.32];setMode('Landing');});
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
+let fieldGridReady=false;
+$('fieldGridFile').addEventListener('change',async e=>{
+ fieldGridReady=false;
+ try{
+ const grid=JSON.parse(await e.target.files[0].text());loadFieldGrid(grid);
+ const canvas=$('fieldGridMap'),ctx=canvas.getContext('2d');canvas.width=grid.width;canvas.height=grid.height;
+ for(let y=0;y<grid.height;y++)for(let x=0;x<grid.width;x++){const i=y*grid.width+x,p=grid.probabilities[i];ctx.fillStyle=grid.supported[i]?'rgb('+Math.round(220*(1-p))+','+Math.round(180*p)+',70)':'#777';ctx.fillRect(x,grid.height-1-y,1,1);}
+ fieldGridReady=true;$('fieldCompare').textContent='Grid loaded locally. Gray = unsupported, neutral cost. Normalized ground map; not aerial RF calibration.';
+ }catch(err){$('fieldCompare').textContent='Grid rejected: '+err.message;}
+});
 on('mission',()=>{
  if(!ready)return;
  const kind=$('missionType').value;
@@ -526,7 +536,8 @@ on('mission',()=>{
    report('A* requires map-known reference navigation: automatically switched away from experimental 2D GPS-denied SLAM. This is not GPS-free flight.');
  }
  const isSites=kind==='sites_rf'||kind==='sites_shortest';
- const isAStar=isSites||kind==='astar_shortest'||kind==='astar_rf';
+ const isAStar=isSites||kind==='astar_shortest'||kind==='astar_rf'||kind==='astar_ml';
+ if(kind==='astar_ml'&&!fieldGridReady){$('fieldCompare').textContent='Import the trained RF grid first.';return;}
  let route=kind==='mapping'?mappingWaypoints:missionWaypoints;
  if(isAStar){
    try{
@@ -534,7 +545,7 @@ on('mission',()=>{
       // MuJoCo with the same collision geometry the A* planner observes.
       const seed=Math.floor(Math.random()*0x100000000)>>>0;
       regenerateScenario(seed);
-      const method=(kind==='astar_rf'||kind==='sites_rf')?'rf_aware':'shortest';
+      const method=kind==='astar_ml'?'ml_aware':(kind==='astar_rf'||kind==='sites_rf')?'rf_aware':'shortest';
       let goal;
       if(isSites){
         currentPlan=planBuildingSiteMission(method,airframe==='crazyflie'?.08:.32,{count:2});
@@ -542,6 +553,11 @@ on('mission',()=>{
       }else{
         goal=randomUrbanGoal(previousUrbanGoal);
         currentPlan=planInteractiveRoute(method,airframe==='crazyflie'?.08:.32,{goal});
+        if(method==='ml_aware'){
+          const base=planInteractiveRoute('shortest',airframe==='crazyflie'?.08:.32,{goal});
+          const a=fieldRouteStats(base.route),b=fieldRouteStats(currentPlan.route);
+          $('fieldCompare').textContent='Same city and goal — shortest: '+a.distance.toFixed(1)+' m / '+(100*a.probability).toFixed(1)+'% predicted; ML: '+b.distance.toFixed(1)+' m / '+(100*b.probability).toFixed(1)+'% predicted. Model-only comparison; live radio remains synthetic.';
+        }
       }
       previousUrbanGoal=goal;urbanMissionCounter++;
       route=currentPlan.route;
@@ -567,7 +583,7 @@ on('mission',()=>{
  }
  hazard={blocked:false,distance:Infinity};siteDwellStart=null;inspectedSites.clear();mission=true;pathTracker.reset();goTo(0);
  if(isAStar){
-   setMode(isSites?'Cross-building inspection mission':currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
+   setMode(isSites?'Cross-building inspection mission':currentPlan.method==='ml_aware'?'Field ML-aware A* demo':currentPlan.method==='rf_aware'?'RF-aware A* city mission':'Shortest-safe A* city mission');
    report('Running randomized map-known 3D route '+currentPlan.length_m.toFixed(1)+' m. City seed '+missionCitySeed+'; ground-truth position is used for this A* demonstration.');
  }else if($('missionType').value==='mapping'){
    setMode('GPS-denied landmark survey');
