@@ -94,6 +94,17 @@ const plannedLine=new THREE.Line(
  new THREE.BufferGeometry().setFromPoints(missionWaypoints.map(w=>new THREE.Vector3(...w))),
  new THREE.LineDashedMaterial({color:0xeca85f,dashSize:.6,gapSize:.35,transparent:true,opacity:.75}));
 plannedLine.computeLineDistances();scene.add(plannedLine);
+const baselineLine=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0xff5555,depthTest:false,transparent:true,opacity:.9}));
+baselineLine.visible=false;baselineLine.renderOrder=10;scene.add(baselineLine);
+let importedGrid=null;
+function paintFieldGrid(base=[],chosen=[]){
+ if(!importedGrid)return;
+ const g=importedGrid,canvas=$('fieldGridMap'),ctx=canvas.getContext('2d');
+ canvas.width=390;canvas.height=390;const w=canvas.width/g.width,h=canvas.height/g.height;
+ for(let y=0;y<g.height;y++)for(let x=0;x<g.width;x++){const i=y*g.width+x,p=g.probabilities[i];ctx.fillStyle=g.supported[i]?'rgb('+Math.round(220*(1-p))+','+Math.round(180*p)+',70)':'#777';ctx.fillRect(x*w,(g.height-1-y)*h,w+.5,h+.5);}
+ const draw=(route,color)=>{if(!route.length)return;ctx.beginPath();route.forEach((p,i)=>{const x=(p[0]+66)/132*canvas.width,y=(66-p[1])/132*canvas.height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.strokeStyle=color;ctx.lineWidth=4;ctx.stroke();};
+ draw(base,'#ff5555');draw(chosen,'#00ffff');
+}
 const targetMarker=new THREE.Mesh(new THREE.SphereGeometry(.14,14,10),new THREE.MeshBasicMaterial({color:0xf5c26b}));
 scene.add(targetMarker);
 const velocityArrow=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0x43efd9,.28,.12);
@@ -319,7 +330,7 @@ function updateUI(){
  drawMissionMap([x,y,z],rs.obstructed);
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('pathError').textContent=pathError.toFixed(2)+' m';
- $('planRF').textContent=(predictCoverage([x,y,z]).p*100).toFixed(0)+'%';
+ $('planRF').textContent=currentPlan?.method==='ml_aware'?(fieldRouteStats(currentPlan.route).probability*100).toFixed(0)+'% route prediction':(predictCoverage([x,y,z]).p*100).toFixed(0)+'%';
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('scanBeams').textContent=slam.lastScan?slam.lastScan.valid+'/'+slam.lastScan.ranges.length:'—';
  $('slamScans').textContent=String(slam.scanCount);
@@ -522,10 +533,10 @@ let fieldGridReady=false;
 $('fieldGridFile').addEventListener('change',async e=>{
  fieldGridReady=false;
  try{
- const grid=JSON.parse(await e.target.files[0].text());loadFieldGrid(grid);
+ const grid=JSON.parse(await e.target.files[0].text());loadFieldGrid(grid);importedGrid=grid;
  const canvas=$('fieldGridMap'),ctx=canvas.getContext('2d');canvas.width=grid.width;canvas.height=grid.height;
  for(let y=0;y<grid.height;y++)for(let x=0;x<grid.width;x++){const i=y*grid.width+x,p=grid.probabilities[i];ctx.fillStyle=grid.supported[i]?'rgb('+Math.round(220*(1-p))+','+Math.round(180*p)+',70)':'#777';ctx.fillRect(x,grid.height-1-y,1,1);}
- fieldGridReady=true;$('fieldCompare').textContent='Grid loaded locally. Gray = unsupported, neutral cost. Normalized ground map; not aerial RF calibration.';
+ paintFieldGrid();fieldGridReady=true;$('fieldCompare').textContent='Grid loaded locally. Gray = unsupported, neutral cost. Normalized ground map; not aerial RF calibration.';
  }catch(err){$('fieldCompare').textContent='Grid rejected: '+err.message;}
 });
 on('mission',()=>{
@@ -543,7 +554,8 @@ on('mission',()=>{
    try{
       // New urban blocks and new destination for EVERY click. First reset
       // MuJoCo with the same collision geometry the A* planner observes.
-      const seed=Math.floor(Math.random()*0x100000000)>>>0;
+      const seed=kind==='astar_ml'?20261126:Math.floor(Math.random()*0x100000000)>>>0;
+      baselineLine.visible=false;plannedLine.material.color.set(kind==='astar_ml'?0x00ffff:0xeca85f);
       regenerateScenario(seed);
       const method=kind==='astar_ml'?'ml_aware':(kind==='astar_rf'||kind==='sites_rf')?'rf_aware':'shortest';
       let goal;
@@ -551,11 +563,13 @@ on('mission',()=>{
         currentPlan=planBuildingSiteMission(method,airframe==='crazyflie'?.08:.32,{count:2});
         goal=currentPlan.sites.at(-1).position;
       }else{
-        goal=randomUrbanGoal(previousUrbanGoal);
+        goal=kind==='astar_ml'?randomUrbanGoal(null,()=>.42):randomUrbanGoal(previousUrbanGoal);
         currentPlan=planInteractiveRoute(method,airframe==='crazyflie'?.08:.32,{goal});
         if(method==='ml_aware'){
           const base=planInteractiveRoute('shortest',airframe==='crazyflie'?.08:.32,{goal});
           const a=fieldRouteStats(base.route),b=fieldRouteStats(currentPlan.route);
+          baselineLine.geometry.dispose();baselineLine.geometry=new THREE.BufferGeometry().setFromPoints(base.route.map(p=>new THREE.Vector3(p[0],p[1],p[2]+.12)));baselineLine.visible=true;
+          paintFieldGrid(base.route,currentPlan.route);
           $('fieldCompare').textContent='Same city and goal — shortest: '+a.distance.toFixed(1)+' m / '+(100*a.probability).toFixed(1)+'% predicted; ML: '+b.distance.toFixed(1)+' m / '+(100*b.probability).toFixed(1)+'% predicted. Model-only comparison; live radio remains synthetic.';
         }
       }
@@ -575,7 +589,7 @@ on('mission',()=>{
       $('plannerStatus').textContent='A* failed: '+error.message;report('A* planner refused mission: '+error.message);return;
    }
  }else{
-   currentPlan=null;$('planDistance').textContent='—';$('planClearance').textContent='—';
+   baselineLine.visible=false;plannedLine.material.color.set(0xeca85f);paintFieldGrid();currentPlan=null;$('planDistance').textContent='—';$('planClearance').textContent='—';
  }
  useRoute(route);
  if(!isAStar && plannedPathClearance(waypointPositions,airframe==='crazyflie'?.08:.32)<.5){
