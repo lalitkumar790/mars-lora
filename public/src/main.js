@@ -162,6 +162,7 @@ function goTo(index){waypointIndex=index;report('Navigating to waypoint '+(index
 function regenerateScenario(seed){
  if(!mujoco)throw Error('Physics engine is not initialized');
  ready=false;paused=true;mission=false;
+ currentPlan=null;
  const newBuildings=regenerateCity(seed);
  if(cityGroup){
    scene.remove(cityGroup);
@@ -228,10 +229,11 @@ function controller(){
  const bearing=Math.atan2(target[1]-ny,target[0]-nx)-yaw;
  hazard=lastHorizontalScan?scanHazard(lastHorizontalScan,bearing,.85):{blocked:false,distance:Infinity};
  const rising=target[2]>=3.8 && pos[2]<target[2]-.35;
+ const fieldTakeoff=currentPlan?.method==='ml_aware' && waypointIndex===0;
  // Continuous path targeting: project onto path segment, look ahead,
  // and slow down as the segment end approaches (rather than chase points).
- desired[0]=inspectingSite?wp[0]:(rising?nx:guidance.target[0]);
- desired[1]=inspectingSite?wp[1]:(rising?ny:guidance.target[1]);
+ desired[0]=fieldTakeoff?target[0]:inspectingSite?wp[0]:(rising?nx:guidance.target[0]);
+ desired[1]=fieldTakeoff?target[1]:inspectingSite?wp[1]:(rising?ny:guidance.target[1]);
  desired[2]=target[2];
  pathError=guidance.crossTrack;
  speedReference=Math.hypot(...guidance.velocity);
@@ -243,6 +245,7 @@ function controller(){
    desired=[nx,ny,pos[2]];
    obstacleHoldTime=data.time;
    setMode('LiDAR obstacle brake — hover');
+   $('plannerStatus').textContent='HOLD: LiDAR obstruction '+hazard.distance.toFixed(2)+' m, waypoint '+(waypointIndex+1)+'. Reset or choose another mission.';
    report('Sensor-based obstacle hold: forward range '+hazard.distance.toFixed(2)+' m. Manual re-plan required.');
  }
 
@@ -293,6 +296,7 @@ function controller(){
    mission=false;
    desired=[pos[0],pos[1],Math.max(pos[2],transitAltitude)];
    setMode('Safety hold — clearance breach');
+   $('plannerStatus').textContent='HOLD: '+clearance.nearest+' clearance '+clearance.distance.toFixed(2)+' m; contacts '+data.ncon+'.';
    report('Mission aborted: '+clearance.nearest+' clearance '+clearance.distance.toFixed(2)+' m; physical contacts '+data.ncon);
  }else if(mission && clearance.warning && data.time-lastWarning>2){
    lastWarning=data.time;report('Close approach: '+clearance.nearest+' clearance '+clearance.distance.toFixed(2)+' m');
@@ -331,6 +335,7 @@ function updateUI(){
  $('linklabel').textContent='Live estimated RSSI '+(rs.rssi?.toFixed(1)??'—')+' dBm · SF'+rs.sf+' · margin '+(Number.isFinite(rs.margin)?rs.margin.toFixed(1):'—')+' dB. Browser channel abstraction, not radio hardware.';
  $('pathError').textContent=pathError.toFixed(2)+' m';
  $('planRF').textContent=currentPlan?.method==='ml_aware'?(fieldRouteStats(currentPlan.route).probability*100).toFixed(0)+'% route prediction':(predictCoverage([x,y,z]).p*100).toFixed(0)+'%';
+ if(currentPlan?.method==='ml_aware'&&mission){const target=waypointPositions[waypointIndex];$('plannerStatus').textContent='ACTIVE WP '+(waypointIndex+1)+'/'+waypointPositions.length+' · current '+[x,y,z].map(v=>v.toFixed(1)).join(', ')+' · target '+target.map(v=>v.toFixed(1)).join(', ')+' · speed '+Math.hypot(...Array.from(data.qvel.slice(0,3))).toFixed(2)+' m/s';}
  $('waypoints').textContent=mission?'Active waypoint '+(waypointIndex+1)+' / '+waypointPositions.length:'Mission inactive • '+waypointPositions.length+' waypoints available';
  $('scanBeams').textContent=slam.lastScan?slam.lastScan.valid+'/'+slam.lastScan.ranges.length:'—';
  $('slamScans').textContent=String(slam.scanCount);
