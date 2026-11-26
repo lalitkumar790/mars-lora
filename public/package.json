@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
+    "dev": "node prepare-manit.mjs && vite --host 0.0.0.0",
+    "build": "node prepare-manit.mjs && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:browser": "node tests/browser-smoke.mjs"
   },
