@@ -437,9 +437,64 @@ function resize(){
  camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h,false);
 }
 new ResizeObserver(resize).observe($('viewport'));
+// Telemetry is a separate kinematic replay, not a physics/autopilot test.
+let twin=null,twinSocket=null,twinRecords=[],twinOrigin=null,twinLastRx=0,twinStart=0,twinIndex=0,twinTrace=null,twinPoints=null;
+const twinScene=new THREE.Scene();twinScene.background=new THREE.Color(0x0a1725);
+twinScene.add(new THREE.AmbientLight(0xffffff,1.5));
+const twinLight=new THREE.DirectionalLight(0xffffff,2);twinLight.position.set(30,40,80);twinScene.add(twinLight);
+const twinGround=new THREE.Mesh(new THREE.PlaneGeometry(4000,4000),new THREE.MeshBasicMaterial({color:0x142b39}));twinScene.add(twinGround);
+const twinGrid=new THREE.GridHelper(4000,80,0x526d80,0x29414f);twinGrid.rotation.x=Math.PI/2;twinScene.add(twinGrid);
+function twinXY(r){return [(r.lon-twinOrigin.lon)*111320*Math.cos(twinOrigin.lat*Math.PI/180),(r.lat-twinOrigin.lat)*111320];}
+function twinValid(r){return r&&Number.isFinite(r.lat)&&Math.abs(r.lat)<=90&&Number.isFinite(r.lon)&&Math.abs(r.lon)<=180;}
+function twinDraw(){
+ for(const o of [twinTrace,twinPoints])if(o){twinScene.remove(o);o.geometry.dispose();o.material.dispose();}
+ const pos=[],col=[];for(const r of twinRecords){const [x,y]=twinXY(r);pos.push(x,y,.12);const c=new THREE.Color(r.received===false?0xff5544:r.received===true?0x42ef9b:0x9bb8ce);col.push(c.r,c.g,c.b);}
+ const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+ twinPoints=new THREE.Points(geo,new THREE.PointsMaterial({vertexColors:true,size:3,sizeAttenuation:false}));twinScene.add(twinPoints);
+}
+function enterTwin(mode){
+ if(!ready)throw Error('Wait for MuJoCo to initialize');
+ mission=false;paused=true;if(twinSocket){twinSocket.close();twinSocket=null;}
+ twin=mode;twinIndex=0;twinLastRx=0;twinStart=performance.now();twinRecords=[];twinOrigin=null;
+ twinScene.add(drone);drone.scale.setScalar(5);camera.position.set(0,-35,25);orbit.target.set(0,0,0);twinDraw();
+ status('TELEMETRY TWIN · '+mode);$('twinStatus').textContent=mode==='live'?'Waiting for real LoRa packets':'Replay loaded';
+}
+function exitTwin(){
+ if(!twin)return;if(twinSocket){twinSocket.close();twinSocket=null;}twin=null;scene.add(drone);drone.scale.setScalar(1);paused=true;status('PHYSICS PAUSED');$('twinStatus').textContent='Exited telemetry mode; reset before flying.';
+}
+$('twinFile').addEventListener('change',async e=>{
+ try{const d=JSON.parse(await e.target.files[0].text());if(d.schema!=='robotcore-twin-v1'||!Array.isArray(d.records)||!d.records.length||!d.records.every((r,i)=>twinValid(r)&&Number.isFinite(r.t)&&(!i||r.t>=d.records[i-1].t)))throw Error('Invalid mission JSON');
+ enterTwin('replay');twinRecords=d.records;twinOrigin=twinRecords[0];twinDraw();twinStart=performance.now();$('twinStatus').textContent='Loaded '+twinRecords.length+' recorded samples';
+ }catch(err){$('twinStatus').textContent=err.message;}
+});
+$('twinLive').addEventListener('click',()=>{
+ try{const token=$('twinToken').value.trim();if(!token)throw Error('Enter local receiver token');enterTwin('live');const ws=new WebSocket('ws://127.0.0.1:8765/ws');twinSocket=ws;
+ ws.onopen=()=>ws.send(JSON.stringify({type:'auth',token}));
+ ws.onmessage=e=>{if(twinSocket!==ws)return;const msg=JSON.parse(e.data);if(msg.type!=='telemetry')return;const a=msg.record;if(a.outOfOrder)return;const r={lat:a.latitude,lon:a.longitude,roll:a.roll,pitch:a.pitch,yaw:a.yaw,seq:a.sequence,received:true,rssi:a.rssi,snr:a.snr,imuFresh:null};if(!twinValid(r))return;if(!twinOrigin)twinOrigin=r;twinRecords.push(r);twinIndex=twinRecords.length-1;twinLastRx=performance.now();twinDraw();};
+ ws.onclose=()=>{if(twinSocket===ws)$('twinStatus').textContent='Receiver disconnected; last pose retained';};
+ ws.onerror=()=>{$('twinStatus').textContent='Local receiver connection failed';};
+ }catch(err){$('twinStatus').textContent=err.message;}
+});
+$('twinExit').addEventListener('click',exitTwin);
+$('twinRestart').addEventListener('click',()=>{if(twin==='replay'){twinIndex=0;twinStart=performance.now();}});
+function twinFrame(now){
+ if(twinRecords.length){
+ if(twin==='replay'){const t=(now-twinStart)/1000*Number($('twinSpeed').value);while(twinIndex+1<twinRecords.length&&twinRecords[twinIndex+1].t<=t)twinIndex++;}
+ const r=twinRecords[twinIndex],xy=twinXY(r),z=2;
+ const old=drone.position.clone();drone.position.set(xy[0],xy[1],z);
+ if(r.imuFresh!==false&&[r.roll,r.pitch,r.yaw].every(Number.isFinite)){const q=new THREE.Quaternion().setFromEuler(new THREE.Euler(r.roll*Math.PI/180,r.pitch*Math.PI/180,r.yaw*Math.PI/180,'ZYX'));drone.quaternion.copy(q);}
+ // Recorded pose is imposed, not dynamically integrated. Display altitude is arbitrary.
+ if(ready){data.qpos[0]=xy[0];data.qpos[1]=xy[1];data.qpos[2]=z;const q=drone.quaternion;data.qpos[3]=q.w;data.qpos[4]=q.x;data.qpos[5]=q.y;data.qpos[6]=q.z;mujoco.mj_forward(model,data);}
+ const d=drone.position.clone().sub(old);camera.position.add(d);orbit.target.copy(drone.position);
+ const stale=twin==='live'&&now-twinLastRx>6000;
+ $('twinStatus').textContent=(stale?'STALE · ':twin==='replay'?'REPLAY · ':'LIVE · ')+ (twinIndex+1)+'/'+twinRecords.length+' · seq '+r.seq+' · GPS '+r.lat.toFixed(6)+', '+r.lon.toFixed(6)+' · RSSI '+(r.rssi??'unknown')+' · IMU '+(r.imuFresh===false?'stale':r.imuFresh===true?'recorded fresh':'unverified on wire')+' · '+(r.received===false?'NOT RECEIVED':r.received===true?'RECEIVED':'unmatched');
+ }
+ orbit.update();renderer.render(twinScene,camera);
+}
 function frame(now){
  requestAnimationFrame(frame);
  const elapsed=Math.min(.2,(now-lastFrame)/1000);lastFrame=now;
+ if(twin){twinFrame(now);return;}
  if(ready&&!paused){
   accumulator=Math.min(.2,accumulator+elapsed);
   let steps=0;
@@ -519,6 +574,7 @@ on('takeoff',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos
 on('land',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],.32];setMode('Landing');});
 on('hover',()=>{if(!ready)return;mission=false;desired=[data.qpos[0],data.qpos[1],Math.max(.35,data.qpos[2])];setMode('Hold position');});
 on('mission',()=>{
+ if(twin){exitTwin();return;}
  if(!ready)return;
  const kind=$('missionType').value;
  if($('navSource').value==='slam' && kind!=='mapping'){
