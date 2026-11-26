@@ -8,6 +8,24 @@ import {obstacles} from './mission.js';
 const getScene=()=>[...obstacles,...CITY_BUILDINGS];
 export const AIRSPACE_GCS=[230,220,120];
 export const AIRSPACE_GOAL=[-30,24,4];
+let fieldGrid=null;
+export function loadFieldGrid(grid){
+ const n=grid.width*grid.height;
+ if(grid.schema!=='mars-lora-rf-grid-v1'||!Number.isInteger(grid.width)||!Number.isInteger(grid.height)||grid.width<2||grid.height<2||n>100000||!Array.isArray(grid.probabilities)||!Array.isArray(grid.supported)||grid.probabilities.length!==n||grid.supported.length!==n||!grid.probabilities.every(x=>Number.isFinite(x)&&x>=0&&x<=1)||!grid.supported.every(x=>x===0||x===1))throw Error('Invalid RF grid');
+ fieldGrid=grid;
+}
+export function fieldProbability(p){
+ if(!fieldGrid)throw Error('Import the local field ML grid first');
+ const {width:w,height:h,probabilities:v,supported:s}=fieldGrid;
+ const x=Math.round((p[0]+66)/132*(w-1)),y=Math.round((p[1]+66)/132*(h-1));
+ if(x<0||x>=w||y<0||y>=h)return 0.5;
+ const i=y*w+x;return s[i]?v[i]:0.5;
+}
+export function fieldRouteStats(route){
+ let total=0,weighted=0;
+ for(let i=1;i<route.length;i++){const a=route[i-1],b=route[i],d=Math.hypot(...a.map((x,j)=>b[j]-x)),n=Math.max(1,Math.ceil(d/1.5));for(let k=0;k<n;k++){const t=(k+.5)/n;weighted+=d/n*fieldProbability(a.map((x,j)=>x+(b[j]-x)*t));}total+=d;}
+ return {distance:total,probability:total?weighted/total:fieldProbability(route[0])};
+}
 const levels=[4,7,10,13,17,21,26],spacing=3;
 const pOf=([i,j,k])=>[i*spacing,j*spacing,levels[k]];
 const key=n=>n.join(',');
@@ -55,7 +73,7 @@ export function checkRoute(route,radius=.32,buffer=.55){
  return {safe:min>=buffer-.001,clearance:min};
 }
 export function planInteractiveRoute(method='shortest',radius=.32,options={}){
- if(!['shortest','rf_aware'].includes(method))throw Error('Unsupported planner');
+ if(!['shortest','rf_aware','ml_aware'].includes(method))throw Error('Unsupported planner');
  const startPosition=options.start??[0,0,4],margin=1.3;
  const start=[Math.round(startPosition[0]/spacing),Math.round(startPosition[1]/spacing),levels.indexOf(startPosition[2])>=0?levels.indexOf(startPosition[2]):0];
  const goalPosition=options.goal??AIRSPACE_GOAL;
@@ -88,7 +106,7 @@ export function planInteractiveRoute(method='shortest',radius=.32,options={}){
    if(!nodeSafe(n)||!safeEdge(cur.n,n))continue;
    const a=pOf(cur.n),b=pOf(n),dist=Math.hypot(...a.map((v,j)=>b[j]-v));
    const mid=a.map((v,j)=>(v+b[j])/2);
-   const rfPenalty=method==='rf_aware'?4.5*dist*(1-predictCoverage(mid).p):0;
+   const rfPenalty=method==='ml_aware'?4.5*dist*(1-fieldProbability(mid)):method==='rf_aware'?4.5*dist*(1-predictCoverage(mid).p):0;
    const g=cur.g+dist*(dz?1.4:1)+rfPenalty;
    const id=key(n),old=nodes.get(id);
    if(old&&g>=old.g-1e-9)continue;
@@ -112,7 +130,7 @@ export function planInteractiveRoute(method='shortest',radius=.32,options={}){
  if(!check.safe)throw Error('Path violates obstacle clearance');
  const length=route.slice(1).reduce((s,p,i)=>s+Math.hypot(...p.map((v,j)=>v-route[i][j])),0);
  return {route,method,expanded,clearance:check.clearance,length_m:length,goal:pOf(goal),
-   coverage:route.map(p=>predictCoverage(p).p)};
+   coverage:route.map(p=>method==='ml_aware'?fieldProbability(p):predictCoverage(p).p)};
 }
 
 /** Choose a safe goal with a non-repeating direction and varying distance.
